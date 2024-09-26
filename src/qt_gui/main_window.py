@@ -1,7 +1,5 @@
 '''Initialize main window.'''
 
-import sys
-
 from PyQt6.QtCore import QSize
 from PyQt6.QtWidgets import QApplication, QMainWindow, QGridLayout, QWidget
 
