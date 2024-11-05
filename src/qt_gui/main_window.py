@@ -4,10 +4,13 @@ import sys
 import numpy as np
 import nmrglue as ng
 import matplotlib.pyplot as plt
+from functools import partial
+from copy import deepcopy
+
 
 from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtWidgets import QApplication, QMainWindow, QGroupBox, QHBoxLayout, QVBoxLayout, QGridLayout, QSizePolicy, QWidget, QLabel, QSlider, QPushButton
-from PyQt6.QtGui import QImage, QPixmap, QIcon, qRgb
+from PyQt6.QtWidgets import *
+from PyQt6.QtGui import QImage, QPixmap, QIcon, qRgb, QDoubleValidator
 
 from spectrum import Spectrum
 
@@ -63,50 +66,44 @@ class MainWindow(QMainWindow):
         Dimension 1
         '''
         for i in [0, 1]:
-            dim1_controls = QGroupBox(f"Dimension {i}")
-            dim1_controls_layout = QVBoxLayout()
+            controls = QGroupBox(f"Dimension {i}")
+            controls_layout = QVBoxLayout()
             
-            # p0
-            dim1_p0_group = QWidget()
-            dim1_p0_group_layout = QHBoxLayout()
+            # p0, p1
+            for j in [0, 1]:
+                pj_group = QWidget()
+                pj_group_layout = QHBoxLayout()
+                
+                pj_label = QLabel(f"p{j}")
+                pj_group_layout.addWidget(pj_label)
+                
+                pj_input = QLineEdit("0.0")
+                pj_input.setObjectName(f"dim{i}_p{j}_input")
+                pj_input.setEnabled(False)
+                double_validator = QDoubleValidator()
+                pj_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                pj_input.setValidator(double_validator)
+                pj_input.setMaximumWidth(50)
+                pj_input.textChanged.connect(partial(self.phasing_input_callback, spectrum, f"dim{i}_p{j}"))
+                pj_group_layout.addWidget(pj_input)
             
-            dim1_p0_label = QLabel("p0")
-            dim1_p0_group_layout.addWidget(dim1_p0_label)
+                pj_slider = QSlider(Qt.Orientation.Horizontal)
+                pj_slider.setObjectName(f"dim{i}_p{j}_slider")
+                pj_slider.setEnabled(False)
+                pj_slider.setMinimum(-360)
+                pj_slider.setMaximum(360)
+                pj_slider.setValue(0)
+                pj_slider.valueChanged.connect(partial(self.phasing_slider_callback, spectrum, f"dim{i}_p{j}"))
+                pj_group_layout.addWidget(pj_slider)
+                
+                pj_group.setLayout(pj_group_layout)
+                controls_layout.addWidget(pj_group)
         
-            dim1_p0_slider = QSlider(Qt.Orientation.Horizontal)
-            dim1_p0_slider.setObjectName(f"dim{i}_p0_slider")
-            dim1_p0_slider.setMinimum(-360)
-            dim1_p0_slider.setMaximum(360)
-            dim1_p0_slider.setValue(0)
-            dim1_p0_slider.valueChanged.connect(lambda: self.update_plot(spectrum))
-            dim1_p0_group_layout.addWidget(dim1_p0_slider)
+            controls.setLayout(controls_layout)
+            controls_group_layout.addWidget(controls)
             
-            dim1_p0_group.setLayout(dim1_p0_group_layout)
-            dim1_controls_layout.addWidget(dim1_p0_group)
-            
-            # p1
-            dim1_p1_group = QWidget()
-            dim1_p1_group_layout = QHBoxLayout()
-            
-            dim1_p1_label = QLabel("p1")
-            dim1_p1_group_layout.addWidget(dim1_p1_label)
-            
-            dim1_p1_slider = QSlider(Qt.Orientation.Horizontal)
-            dim1_p1_slider.setObjectName(f"dim{i}_p1_slider")
-            dim1_p1_slider.setMinimum(-360)
-            dim1_p1_slider.setMaximum(360)
-            dim1_p1_slider.setValue(0)
-            dim1_p1_slider.valueChanged.connect(lambda: self.update_plot(spectrum))
-            dim1_p1_group_layout.addWidget(dim1_p1_slider)
-            
-            dim1_p1_group.setLayout(dim1_p1_group_layout)
-            dim1_controls_layout.addWidget(dim1_p1_group)
-        
-            dim1_controls.setLayout(dim1_controls_layout)
-            controls_group_layout.addWidget(dim1_controls)
-            
-            dim1_controls.setLayout(dim1_controls_layout)
-            controls_group_layout.addWidget(dim1_controls)
+            controls.setLayout(controls_layout)
+            controls_group_layout.addWidget(controls)
         
         
         controls_group_layout.addStretch()
@@ -137,41 +134,60 @@ class MainWindow(QMainWindow):
         content = QWidget()
         content.setLayout(layout)
         self.setCentralWidget(content)
-        
-        
+
+
     def initialize_empty_spectrum(_) -> QPixmap:
         img = QImage(1, 1, QImage.Format.Format_Indexed8)
         img.fill(qRgb(50,50,50))
         return QPixmap.fromImage(img)
-    
-    
+
+
     def import_spectrum_button_callback(self, spectrum) -> None:
-        spectrum.load()
+        # Load and display spectrum
+        file_path = QFileDialog.getOpenFileName(
+            self,
+            'Open file',
+            'c:\\',
+        )  
+        print(f"Opening: {file_path[0]}")
+        
+        spectrum.load(file_path[0])
+        
+        print("156", spectrum.data.shape)
         self.display_spectrum(spectrum)
+        
+        self.toggle_phasing_controls()
         return
-    
-    
+
+
     def display_spectrum(self, spectrum: Spectrum) -> None:
         
+        print(spectrum.dim0_ppm_scale[0], spectrum.dim0_ppm_scale[-1])
+        print(spectrum.dim1_ppm_scale[0], spectrum.dim1_ppm_scale[-1])
         limits0 = [135, 100]
-        limits1 = [70, 40]
+        limits1 = [12, 6]
         
-        print(spectrum.dim0_ppm_scale)
-        print(spectrum.dim1_ppm_scale)
         x_index_start = np.where(spectrum.dim0_ppm_scale == min(spectrum.dim0_ppm_scale, key=lambda x:abs(x-limits0[0])))[0][0]
         x_index_end = np.where(spectrum.dim0_ppm_scale == min(spectrum.dim0_ppm_scale, key=lambda x:abs(x-limits0[1])))[0][0]
         y_index_start = np.where(spectrum.dim1_ppm_scale == min(spectrum.dim1_ppm_scale, key=lambda x:abs(x-limits1[0])))[0][0]
         y_index_end = np.where(spectrum.dim1_ppm_scale == min(spectrum.dim1_ppm_scale, key=lambda x:abs(x-limits1[1])))[0][0]
         
-        print(x_index_start, x_index_end)
-        print(y_index_start, y_index_end)
-        data = spectrum.data[x_index_start:x_index_end, y_index_start:y_index_end]
+        #print("x limits:", x_index_start, x_index_end)
+        #print("y limits:", y_index_start, y_index_end)
+        data = deepcopy(spectrum.data)
+        data = data[x_index_start:x_index_end, y_index_start:y_index_end]
         #data = data[650:1300, 1900:2200]
         
         data = np.flip(data, 0)
+        
+        if len(data) == 0:
+            return
 
-        max_value = data.max()
-        min_value = 0
+        #print(data)
+        max_value = 10E9
+        min_value = 1E9
+        
+        print(data.max())
         
         normalized_array = (data - min_value) / (max_value - min_value)
         normalized_array = np.clip(normalized_array, 0, 1)  # Ensure values stay within [0, 1]
@@ -190,14 +206,63 @@ class MainWindow(QMainWindow):
         spectrum_object.setPixmap(pixmap)
     
     
+    def toggle_phasing_controls(self) -> None:
+        for i in [0, 1]:
+            for j in [0, 1]:
+                phasing_input = self.findChild(QLineEdit, f"dim{i}_p{j}_input")
+                phasing_input.setEnabled(not phasing_input.isEnabled())
+                
+                phasing_slider = self.findChild(QSlider, f"dim{i}_p{j}_slider")
+                phasing_slider.setEnabled(not phasing_slider.isEnabled())
+     
+    
+    def phasing_input_callback(self, spectrum: Spectrum, identifier: str) -> None:
+        # reset on empty input
+        phasing_input = self.findChild(QLineEdit, f"{identifier}_input")
+        print("phasing_input", f"{identifier}_input", phasing_input.text())
+        if phasing_input.text() == "":
+            phasing_input.setText("0")
+            self.findChild(
+                QSlider, f"{identifier}_slider"
+            ).setValue(
+                0
+            )
+        else:
+            self.findChild(
+                QSlider, f"{identifier}_slider"
+            ).setValue(
+                int(float(
+                    phasing_input.text()
+                ))
+            )
+        
+        # update plot
+        self.update_plot(spectrum)
+    
+    
+    def phasing_slider_callback(self, spectrum: Spectrum, identifier: str) -> None:
+        # change input
+        self.findChild(
+            QLineEdit, f"{identifier}_input"
+        ).setText(
+            str(
+                self.findChild(QSlider, f"{identifier}_slider").value()
+                )
+        )
+        
+        # update plot
+        self.update_plot(spectrum)
+    
+    
     def update_plot(self, spectrum: Spectrum) -> None:
+        phasing_values = [
+            self.findChild(QLineEdit, "dim0_p0_input").text(),
+            self.findChild(QLineEdit, "dim0_p1_input").text(),
+            self.findChild(QLineEdit, "dim1_p0_input").text(),
+            self.findChild(QLineEdit, "dim1_p1_input").text()
+        ]
         # Phase spectrum
-        spectrum.phase([
-            self.findChild(QSlider, "dim0_p0_slider").value(),
-            self.findChild(QSlider, "dim0_p1_slider").value(),
-            self.findChild(QSlider, "dim1_p0_slider").value(),
-            self.findChild(QSlider, "dim1_p1_slider").value(),
-        ])
+        spectrum.phase([float(p) if p != "" else 0.0 for p in phasing_values])
         
         # Display phased spectrum
         self.display_spectrum(spectrum)
