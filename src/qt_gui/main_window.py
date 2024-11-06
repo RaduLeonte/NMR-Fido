@@ -164,8 +164,11 @@ class MainWindow(QMainWindow):
         
         print(spectrum.dim0_ppm_scale[0], spectrum.dim0_ppm_scale[-1])
         print(spectrum.dim1_ppm_scale[0], spectrum.dim1_ppm_scale[-1])
-        limits0 = [135, 100]
-        limits1 = [12, 6]
+        limits0 = [70, 40]
+        limits1 = [135, 6]
+        limits0 = [70, 40]
+        limits1 = [135, 6]
+        
         
         x_index_start = np.where(spectrum.dim0_ppm_scale == min(spectrum.dim0_ppm_scale, key=lambda x:abs(x-limits0[0])))[0][0]
         x_index_end = np.where(spectrum.dim0_ppm_scale == min(spectrum.dim0_ppm_scale, key=lambda x:abs(x-limits0[1])))[0][0]
@@ -175,7 +178,7 @@ class MainWindow(QMainWindow):
         #print("x limits:", x_index_start, x_index_end)
         #print("y limits:", y_index_start, y_index_end)
         data = deepcopy(spectrum.data)
-        data = data[x_index_start:x_index_end, y_index_start:y_index_end]
+        #data = data[x_index_start:x_index_end, y_index_start:y_index_end]
         #data = data[650:1300, 1900:2200]
         
         data = np.flip(data, 0)
@@ -184,8 +187,18 @@ class MainWindow(QMainWindow):
             return
 
         #print(data)
-        max_value = 10E9
-        min_value = 1E9
+        def _median_absolute_deviation(data, k=1.4826):
+            """ Median Absolute Deviation: a "Robust" version of standard deviation.
+                Indices variabililty of the sample.
+                https://en.wikipedia.org/wiki/Median_absolute_deviation
+            """
+            data = np.ma.array(data).compressed()
+            median = np.median(data)
+            return k*np.median(np.abs(data - median))
+        
+        max_value = _median_absolute_deviation(data)*10
+        min_value = _median_absolute_deviation(data)*5
+        
         
         print(data.max())
         
