@@ -49,12 +49,7 @@ class Spectrum:
         self.processor.add_operation(ng.pipe_proc.tp)
         
         
-    def load(self, file_path: str = "src/test.fid") -> None:
-        self.fid_dic, self.fid_data = ng.pipe.read(file_path)
-
-        
-        self.process()
-        
+    def calcualate_ppm_scales(self) -> None:
         self.dim0_uc = ng.pipe.make_uc(self.dic, self.data, dim=0)
         self.dim0_ppm_scale = self.dim0_uc.ppm_scale()
         
@@ -62,8 +57,18 @@ class Spectrum:
         self.dim1_ppm_scale = self.dim1_uc.ppm_scale()
         
         
+    def load(self, file_path: str = "src/test.fid") -> None:
+        self.fid_dic, self.fid_data = ng.pipe.read(file_path)
+
+        
+        self.process()
+
+        
+        
     def process(self) -> None:
         self.processor.run(self)
+        self.calcualate_ppm_scales()
+    
         
         
     def reset_phase(self) -> None:

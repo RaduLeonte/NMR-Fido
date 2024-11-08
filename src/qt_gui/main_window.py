@@ -6,11 +6,12 @@ import nmrglue as ng
 import matplotlib.pyplot as plt
 from functools import partial
 from copy import deepcopy
+import pyqtgraph as pg
 
 
 from PyQt6.QtCore import QSize, Qt, QThreadPool, QRunnable, pyqtSlot, QRectF
 from PyQt6.QtWidgets import *
-from PyQt6.QtGui import QImage, QPixmap, QIcon, qRgb, QDoubleValidator, QColor, QPalette, QPainter, QPen
+from PyQt6.QtGui import QImage, QPixmap, QIcon, qRgb, QDoubleValidator, QColor, QPalette, QPainter, QPen, QResizeEvent
 
 from spectrum import Spectrum
 
@@ -19,6 +20,7 @@ def start_app(args: list):
     spectrum: Spectrum = Spectrum()
     
     app: QApplication = QApplication(args)
+    app.setStyle("fusion")
 
     window: MainWindow = MainWindow(spectrum)
     window.show()
@@ -59,13 +61,10 @@ class MainWindow(QMainWindow):
         Controls
         '''
         controls_group = QGroupBox("Phasing controls")
-        controls_group.setFixedWidth(600)
+        controls_group.setFixedWidth(400)
         controls_group.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Expanding)
         controls_group_layout = QVBoxLayout()
-        
-        '''
-        Dimension 1
-        '''
+
         for i in [0, 1]:
             controls = QGroupBox(f"Dimension {i}")
             controls_layout = QVBoxLayout()
@@ -139,9 +138,9 @@ class MainWindow(QMainWindow):
         plot_container_layout.setHorizontalSpacing(0)
         plot_container_layout.setVerticalSpacing(0)
         
-        spectrum_obj = QLabel(self)
+        spectrum_obj = SpectrumDisplay(self)
         spectrum_obj.setObjectName("spectrum_obj")
-        spectrum_obj.setStyleSheet("border-style: solid; border-width: 2px; border-color:black")
+        #spectrum_obj.setStyleSheet("border-style: solid; border-width: 2px; border-color:black")
         spectrum_obj.setPixmap(self.initialize_empty_spectrum())
         plot_container_layout.addWidget(spectrum_obj, 1, 1)
         
@@ -154,17 +153,6 @@ class MainWindow(QMainWindow):
             {"orientation": "h", "grid_pos": (2,1), "label_first": False}
         ]
         for ax_dict in axs:
-            #h_axis_top = Color("red")
-            #h_axis_top.setFixedHeight(axis_size)
-            #plot_container_layout.addWidget(h_axis_top, 0, 1)
-            #
-            #v_axis_left = Color("blue")
-            #v_axis_left.setFixedWidth(axis_size)
-            #plot_container_layout.addWidget(v_axis_left, 1, 0)
-            #
-            #v_axis_right = Color("green")
-            #v_axis_right.setFixedWidth(axis_size)
-            #plot_container_layout.addWidget(v_axis_right, 1, 2)
             grid_pos = ax_dict["grid_pos"]
             orientation = ax_dict["orientation"]
             ax_label_name = "F2 [ppm]" if orientation == "h" else "F1 [ppm]"
@@ -202,8 +190,22 @@ class MainWindow(QMainWindow):
             plot_container_layout.addWidget(ax, *grid_pos)
         
         
+        
+        
         spectrum_container_layout.addLayout(plot_container_layout)
         
+        plot_graph = pg.PlotWidget()
+        plot_graph.setVisible(False)
+        plot_graph.setObjectName("horizontal_trace")
+        plot_graph.setFixedHeight(200)
+        background_color = QColor("FFFFFF")
+        background_color.setAlpha(1)
+        plot_graph.setBackground(background_color)
+        plot_graph.getAxis("left").setTicks([])
+        plot_graph.getAxis("left").setTextPen(background_color)
+        plot_graph.getAxis("bottom").setTicks([])
+        self.h_trace_line = plot_graph.plot()
+        spectrum_container_layout.addWidget(plot_graph)
         
         spectrum_container.setLayout(spectrum_container_layout)
         layout.addWidget(spectrum_container)
@@ -215,75 +217,100 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(content)
 
 
-    def initialize_empty_spectrum(_) -> QPixmap:
-        img = QImage(1, 1, QImage.Format.Format_Indexed8)
-        img.fill(qRgb(50,50,50))
+    def initialize_empty_spectrum(self) -> QPixmap:
+        """Generate a 1x1 empty pixmap so the spectrum can be
+        initialized with it.
+
+        Returns:
+            QPixmap: Empty pixmap.
+        """
+        img = QImage(0, 0, QImage.Format.Format_Indexed8)
+        background_color = QColor("#F0F0F0")
+        background_color.setAlpha(0)
+        img.fill(background_color)
         return QPixmap.fromImage(img)
+    
+    
+    def import_spectrum(self, spectrum: Spectrum, file_path: str) -> None:
+        """Import spectrum from specified path.
+
+        Args:
+            spectrum (Spectrum): Main spectrum class.
+            file_path (str): File path to fid file to import.
+        """
+        print(f"MainWindow.import_spectrum -> Loading:{file_path}")
+        
+        # Hand file off to spectrum class to load data and process.
+        spectrum.load(file_path)
+        
+        # Enable spectrum axis.
+        self.show_axis(spectrum)
+        
+        # Display processsed spectrum.
+        self.display_spectrum(spectrum)
+        
+        # Enable phasing controls.
+        self.toggle_phasing_controls()
 
 
-    def import_spectrum_button_callback(self, spectrum) -> None:
-        # Load and display spectrum
-        file_path = QFileDialog.getOpenFileName(
+    def import_spectrum_button_callback(self, spectrum: Spectrum) -> None:
+        """Open a dialog for file browsing then imporrt
+        specified fid file.
+
+        Args:
+            spectrum (Spectrum):  Main spectrum class.
+        """
+        files = QFileDialog.getOpenFileName(
             self,
             'Open file',
             'c:\\',
-        )  
-        print(f"import_spectrum_button_callback opening:{file_path[0]}")
-        
-        spectrum.load(file_path[0])
-        
-        self.show_axis(spectrum)
-        
-        self.display_spectrum(spectrum)
-        
-        
-        self.toggle_phasing_controls()
-        return
+        )       
+        self.import_spectrum(spectrum, files[0])
     
     
-    def import_demo_spectrum_button_callback(self, spectrum) -> None:
-                # Load and display spectrum
-        file_path = "src/test.fid"
-        print(f"import_spectrum_button_callback opening:{file_path}")
-        
-        spectrum.load(file_path)
-        
-        self.show_axis(spectrum)
-        
-        self.display_spectrum(spectrum)
-        
-        
-        self.toggle_phasing_controls()
-        return
+    def import_demo_spectrum_button_callback(self, spectrum: Spectrum) -> None:
+        """Import demo spectrum from nmrglue wiki.
+
+        Args:
+            spectrum (Spectrum): Main spectrum class.
+        """
+        self.import_spectrum(spectrum, "src/test.fid")
 
 
-    def display_spectrum(self, spectrum: Spectrum) -> None:
+    def display_spectrum(self, spectrum: Spectrum) -> None:    
+        limitsX = [70, 40]
+        limitsY = [135, 100]
         
-        #print(spectrum.dim0_ppm_scale[0], spectrum.dim0_ppm_scale[-1])
-        #print(spectrum.dim1_ppm_scale[0], spectrum.dim1_ppm_scale[-1])
-        limits0 = [70, 40]
-        limits1 = [135, 6]
-        limits0 = [70, 40]
-        limits1 = [135, 6]
+        print(f"MainWindow.display_spectrum -> Dim1 X {spectrum.dim1_ppm_scale[0]=} {spectrum.dim1_ppm_scale[-1]=}")
+        print(f"MainWindow.display_spectrum -> Dim0 Y {spectrum.dim0_ppm_scale[0]=} {spectrum.dim0_ppm_scale[-1]=}")
+        x_index_start = np.where(spectrum.dim1_ppm_scale == min(spectrum.dim1_ppm_scale, key=lambda x:abs(x-limitsX[0])))[0][0]
+        x_index_end = np.where(spectrum.dim1_ppm_scale == min(spectrum.dim1_ppm_scale, key=lambda x:abs(x-limitsX[1])))[0][0]
         
+        y_index_start = np.where(spectrum.dim0_ppm_scale == min(spectrum.dim0_ppm_scale, key=lambda x:abs(x-limitsY[0])))[0][0]
+        y_index_end = np.where(spectrum.dim0_ppm_scale == min(spectrum.dim0_ppm_scale, key=lambda x:abs(x-limitsY[1])))[0][0]
         
-        x_index_start = np.where(spectrum.dim0_ppm_scale == min(spectrum.dim0_ppm_scale, key=lambda x:abs(x-limits0[0])))[0][0]
-        x_index_end = np.where(spectrum.dim0_ppm_scale == min(spectrum.dim0_ppm_scale, key=lambda x:abs(x-limits0[1])))[0][0]
-        y_index_start = np.where(spectrum.dim1_ppm_scale == min(spectrum.dim1_ppm_scale, key=lambda x:abs(x-limits1[0])))[0][0]
-        y_index_end = np.where(spectrum.dim1_ppm_scale == min(spectrum.dim1_ppm_scale, key=lambda x:abs(x-limits1[1])))[0][0]
-        
-        #print("x limits:", x_index_start, x_index_end)
-        #print("y limits:", y_index_start, y_index_end)
         data = deepcopy(spectrum.data)
-        #data = data[x_index_start:x_index_end, y_index_start:y_index_end]
-        #data = data[650:1300, 1900:2200]
+    
+        
+        print(f"MainWindow.display_spectrum -> {data.shape=}")
+        data = data[y_index_start:y_index_end, x_index_start:x_index_end]
+        print(f"MainWindow.display_spectrum -> X limits {x_index_start=}; {x_index_end=}")
+        print(f"MainWindow.display_spectrum -> Y limits {y_index_start=}; {y_index_end=}")
+        
+        #data = data[180:350, 1900:2160]
         
         data = np.flip(data, 0)
+        
+        h_trace_line = self.h_trace_line
+        y = data[15]
+        x = np.arange(0, len(y))
+        h_trace_line.setData(x, y)
+        
+        print(f"MainWindow.display_spectrum -> {data.shape=}")
         
         if len(data) == 0:
             return
 
-        #print(data)
         def _median_absolute_deviation(data, k=1.4826):
             """ Median Absolute Deviation: a "Robust" version of standard deviation.
                 Indices variabililty of the sample.
@@ -293,11 +320,10 @@ class MainWindow(QMainWindow):
             median = np.median(data)
             return k*np.median(np.abs(data - median))
         
-        max_value = _median_absolute_deviation(data)*10
-        min_value = _median_absolute_deviation(data)*5
+        max_value = _median_absolute_deviation(data)*30
+        min_value = _median_absolute_deviation(data)*1
+        print(f"MainWindow.display_spectrum -> {min_value=} {max_value=}")
         
-        
-        #print(data.max())
         
         normalized_array = (data - min_value) / (max_value - min_value)
         normalized_array = np.clip(normalized_array, 0, 1)  # Ensure values stay within [0, 1]
@@ -313,10 +339,11 @@ class MainWindow(QMainWindow):
         spectrum_object = self.findChild(QLabel, "spectrum_obj")
         
         pixmap = pixmap.scaled(spectrum_object.width(), spectrum_object.height())
+        spectrum_object._pixmap = pixmap
         spectrum_object.setPixmap(pixmap)
     
     
-    def show_axis(self, spectrum) -> None:
+    def show_axis(self, spectrum: Spectrum) -> None:
         axs = self.findChildren(QWidget, "spectrum_ax")
         axis_config = {
             "top": False,
@@ -354,31 +381,26 @@ class MainWindow(QMainWindow):
             ax_label.setText(ax_label_name)
             
             
-            #print(ax_orientation, ax_ticks_w, ax_ticks_h, ax_ticks_w < ax_ticks_h)
+
             pixmap = QPixmap(ax_ticks_w, ax_ticks_h)
-            pixmap.fill(QColor("#F0F0F0"))
+            background_color = QColor("#F0F0F0")
+            background_color.setAlpha(1)
+            pixmap.fill(background_color)
             
             painter = QPainter(pixmap)
             pen = QPen()
-            pen.setColor(QColor("#000000"))
+            pen.setColor(QColor("#F0F0F0"))
             pen.setWidth(2)
             painter.setPen(pen)
             
             
             ax_ppm_scale = spectrum.dim1_ppm_scale if ax_orientation == "h" else spectrum.dim0_ppm_scale
-            #print(spectrum.dim0_ppm_scale) # 15 N
-            #print(spectrum.dim1_ppm_scale) # 13 C
-            #print(ax_ppm_scale[0], ax_ppm_scale[-1])
             
             def generate_ticks(ppm_scale: np.array, axis_size: float, nr_ticks:int=6) -> list:
-                print(ppm_scale)
                 ticks_ppm = np.linspace(np.floor(ppm_scale[0]), np.ceil(ppm_scale[-1]), nr_ticks)
-                print("Ticks ppm:", ticks_ppm)
                 ticks_unitless = np.absolute((ticks_ppm - ppm_scale[0]) / (ppm_scale[0] - ppm_scale[-1]))
-                print("Ticks unitless:", ticks_unitless)
                 ticks_px = list(ticks_unitless * axis_size)
                 ticks_px = [int(p) for p in ticks_px]
-                print("Ticks px:", ticks_px)
                 return ticks_ppm, ticks_px
                 
             ticks_labels, ticks_positions = generate_ticks(ax_ppm_scale, max(ax_ticks_w, ax_ticks_h), 10)
@@ -389,7 +411,6 @@ class MainWindow(QMainWindow):
             text_height = 10
 
             # Loop to draw ticks vertically
-            print(ax_orientation, ax_label_first)
             for i in range(len(ticks_positions)):
                 p = ticks_positions[i]
                 label = ticks_labels[i]
@@ -430,6 +451,13 @@ class MainWindow(QMainWindow):
     
     
     def toggle_phasing_controls(self) -> None:
+        """Find all phasing controls float inputs and sliders and
+        enable them.
+        """
+        h_trace = self.findChild(pg.PlotWidget, "horizontal_trace")
+        h_trace.setVisible(True)
+        
+        
         for i in [0, 1]:
             for j in [0, 1]:
                 phasing_input = self.findChild(QLineEdit, f"dim{i}_p{j}_input")
@@ -437,53 +465,63 @@ class MainWindow(QMainWindow):
                 
                 phasing_slider = self.findChild(QSlider, f"dim{i}_p{j}_slider")
                 phasing_slider.setEnabled(not phasing_slider.isEnabled())
-     
-     
-     
+    
+    
     def threaded(self, *args):
-        print(f"threaded self:{self}")
-        print(f"threaded args:{args}")
+        """Run a function (args[0]) with arguments (args[1:]) on a different thread.
+        """
         worker = Worker(*args)
         self.threadpool.start(worker)
     
     
-    def phasing_input_callback(self, spectrum: Spectrum, identifier: str, *args) -> None:
-        # reset on empty input
+    def phasing_input_callback(self, spectrum: Spectrum, identifier: str, phasing_input_text: str) -> None:
+        """Callback for phasing float inputs. On change, update the slider and rephase spectrum.
+
+        Args:
+            spectrum (Spectrum): Main spectrum class.
+            identifier (str): Identifier of callee input.
+            phasing_input_text (str): Current text content of the input.
+        """
+        print(f"MainWindow.phasing_input_callback -> {phasing_input_text}")
+        # Select callee
         phasing_input = self.findChild(QLineEdit, f"{identifier}_input")
+        # Immediately return if callee cannot be found
         if phasing_input == None:
             return
-        print("phasing_input", f"{identifier}_input", phasing_input.text())
         
+        # If the the input text content is not a valid float, return immediately.
         try:
-            int(float(phasing_input.text()))
+            int(float(phasing_input_text))
         except ValueError:
             return
         
-        if phasing_input.text() == "":
-            phasing_input.setText("0")
-            self.findChild(
-                QSlider, f"{identifier}_slider"
-            ).setValue(
-                0
-            )
-        else:
-            self.findChild(
-                QSlider, f"{identifier}_slider"
-            ).setValue(
-                int(float(
-                    phasing_input.text()
-                ))
-            )
+        # Find the float input's corresponding slider and set it to the input value.
+        self.findChild(
+            QSlider, f"{identifier}_slider"
+        ).setValue(
+            int(float(
+                phasing_input_text
+            ))
+        )
         
-        # update plot
+        # Update the plot with new phasing values
         self.update_plot(spectrum)
     
     
-    def phasing_slider_callback(self, spectrum: Spectrum, identifier: str, *args) -> None:
-        # change input
+    def phasing_slider_callback(self, spectrum: Spectrum, identifier: str, phasing_slider_value: int) -> None:
+        """Callback for phasing slider. On change, update the float input and rephase spectrum.
+
+        Args:
+            spectrum (Spectrum): Main spectrum class.
+            identifier (str): Identifier of callee slider.
+            phasing_slider_value (int): Current slider value.
+        """
+        print(f"MainWindow.phasing_slider_callback -> {phasing_slider_value}")
+        # Immediately return if callee slider cannot be found
         if self.findChild(QLineEdit, f"{identifier}_input") == None:
             return
-    
+
+        # Find the slider's corresponding float input and set its text content to the slider value.
         self.findChild(
             QLineEdit, f"{identifier}_input"
         ).setText(
@@ -492,22 +530,44 @@ class MainWindow(QMainWindow):
                 )
         )
         
-        # update plot
+        # Update the plot with new phasing values
         self.update_plot(spectrum)
     
     
     def update_plot(self, spectrum: Spectrum) -> None:
+        """Update the spectrum's phasing values and reprocess it before displaying it.
+
+        Args:
+            spectrum (Spectrum): Main spectrum class.
+        """
+        # Get all phasing values from the inputs.
         phasing_values = [
             self.findChild(QLineEdit, "dim0_p0_input").text(),
             self.findChild(QLineEdit, "dim0_p1_input").text(),
             self.findChild(QLineEdit, "dim1_p0_input").text(),
             self.findChild(QLineEdit, "dim1_p1_input").text()
         ]
-        # Phase spectrum
+        
+        # Set phasing values in the spectrum class
         spectrum.phase([float(p) if p != "" else 0.0 for p in phasing_values])
         
         # Display phased spectrum
         self.display_spectrum(spectrum)
+
+
+class SpectrumDisplay(QLabel):
+    def __init__(self, *args, **kwargs):
+        QLabel.__init__(self)
+        self._pixmap = MainWindow.initialize_empty_spectrum(self)
+        #print(f"SpectrumDisplay -> {self._pixmap.size()=}")
+        
+    def resizeEvent(self, e: QResizeEvent):
+        #print(f"SpectrumDisplay.resizeEvent -> {self._pixmap.size()=}")
+        self.setPixmap(
+            self._pixmap.scaled(
+                self.width(), self.height()
+            )
+        )
 
 
 class Worker(QRunnable):
