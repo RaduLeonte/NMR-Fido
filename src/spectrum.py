@@ -19,6 +19,35 @@ class Spectrum:
         self.dim1_p0 = 0
         self.dim1_p1 = 0
         
+        self.processor = Processor()
+        #dic, data = ng.pipe_proc.sp(dic, data, off=0.5, end=1.0, pow=2, c=1.0) # adjustable sine bell window
+        self.processor.add_operation(ng.pipe_proc.sp, off=0.5, end=1.0, pow=2, c=1.0)
+        #dic, data = ng.pipe_proc.zf(dic, data, auto=True) # zero filling
+        self.processor.add_operation(ng.pipe_proc.zf, auto=True)
+        #dic, data = ng.pipe_proc.ft(dic, data, auto=True) # fourier transform
+        self.processor.add_operation(ng.pipe_proc.ft, auto=True)
+        #dic, data = ng.pipe_proc.ps(dic, data, p0=self.dim0_p0, p1=self.dim0_p1) # phase correction
+        self.processor.add_operation(ng.pipe_proc.ps, p0=lambda: self.dim0_p0, p1=lambda: self.dim0_p1)
+        #dic, data = ng.pipe_proc.di(dic, data) # delete imaginary part
+        self.processor.add_operation(ng.pipe_proc.di)
+
+        #dic, data = ng.pipe_proc.tp(dic, data) # transpose
+        self.processor.add_operation(ng.pipe_proc.tp)
+        
+        #dic, data = ng.pipe_proc.sp(dic, data, off=0.5, end=1.0, pow=2, c=1.0) # adjustable sine bell window
+        self.processor.add_operation(ng.pipe_proc.sp, off=0.5, end=1.0, pow=2, c=1.0)
+        #dic, data = ng.pipe_proc.zf(dic, data, auto=True)  # zero filling
+        self.processor.add_operation(ng.pipe_proc.zf, auto=True)
+        #dic, data = ng.pipe_proc.ft(dic, data, auto=True) # fourier transform
+        self.processor.add_operation(ng.pipe_proc.ft, auto=True)
+        #dic, data = ng.pipe_proc.ps(dic, data, p0=self.dim1_p0, p1=self.dim1_p1) # phase correction
+        self.processor.add_operation(ng.pipe_proc.ps, p0=lambda: self.dim1_p0, p1=lambda: self.dim1_p1)
+        #dic, data = ng.pipe_proc.di(dic, data) # delete imaginary part
+        self.processor.add_operation(ng.pipe_proc.di)
+        
+        #self.dic, self.data = ng.pipe_proc.tp(dic, data) # transpose
+        self.processor.add_operation(ng.pipe_proc.tp)
+        
         
     def load(self, file_path: str = "src/test.fid") -> None:
         self.fid_dic, self.fid_data = ng.pipe.read(file_path)
@@ -34,33 +63,7 @@ class Spectrum:
         
         
     def process(self) -> None:
-        dic = deepcopy(self.fid_dic)
-        data = deepcopy(self.fid_data)
-
-        # process the direct dimension
-        #dic, data = ng.pipe_proc.poly(dic, data) # not implemented
-        dic, data = ng.pipe_proc.sp(dic, data, off=0.5, end=1.0, pow=2, c=1.0) # adjustable sine bell window
-        dic, data = ng.pipe_proc.zf(dic, data, auto=True) # zero filling
-        dic, data = ng.pipe_proc.ft(dic, data, auto=True) # fourier transform
-        dic, data = ng.pipe_proc.ps(dic, data, p0=self.dim0_p0, p1=self.dim0_p1) # phase correction
-        dic, data = ng.pipe_proc.di(dic, data) # delete imaginary part
-
-        dic, data = ng.pipe_proc.tp(dic, data) # transpose
-        
-        # process the indirect dimension
-        dic, data = ng.pipe_proc.sp(dic, data, off=0.5, end=1.0, pow=2, c=1.0) # adjustable sine bell window
-        dic, data = ng.pipe_proc.zf(dic, data, auto=True)  # zero filling
-        dic, data = ng.pipe_proc.ft(dic, data, auto=True) # fourier transform
-        dic, data = ng.pipe_proc.ps(dic, data, p0=self.dim1_p0, p1=self.dim1_p1) # phase correction
-        dic, data = ng.pipe_proc.di(dic, data) # delete imaginary part
-        
-        self.dic, self.data = ng.pipe_proc.tp(dic, data) # transpose
-        return
-        for function in self.processor:
-            function_name = function[0]
-            function_args = function[1]
-            print(f"Processor: {function_name} -> {function_args}")
-            dic, data = function_name(dic, data, *function_args)
+        self.processor.run(self)
         
         
     def reset_phase(self) -> None:
@@ -77,7 +80,31 @@ class Spectrum:
         self.dim1_p1 = values[3]
         
         self.process()
+
+
+class Processor:
+    
+    def __init__(self):
+        self.operations = []
         
+        
+    def add_operation(self, func, *args, **kwargs) -> None:
+        self.operations.append((func, args, kwargs))
+    
+    
+    def run(self, spectrum: Spectrum) -> None:
+        dic = deepcopy(spectrum.fid_dic)
+        data = deepcopy(spectrum.fid_data)
+        for func, args, kwargs in self.operations:
+            eval_args = [arg() if callable(arg) else arg for arg in args]
+            eval_kwargs = {k: v() if callable(v) else v for k, v in kwargs.items()}
+            #print(f"Processor.run {func.__name__} -> args:{eval_args}; kwargs:{eval_kwargs}")
+            dic, data = func(dic, data, *eval_args, **eval_kwargs)
+        
+        spectrum.dic = dic
+        spectrum.data = data
+
+
         
 if __name__ == "__main__":
     dic, data = ng.pipe.read("test.fid")

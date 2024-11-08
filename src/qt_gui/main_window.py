@@ -8,9 +8,9 @@ from functools import partial
 from copy import deepcopy
 
 
-from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtCore import QSize, Qt, QThreadPool, QRunnable, pyqtSlot, QRectF
 from PyQt6.QtWidgets import *
-from PyQt6.QtGui import QImage, QPixmap, QIcon, qRgb, QDoubleValidator
+from PyQt6.QtGui import QImage, QPixmap, QIcon, qRgb, QDoubleValidator, QColor, QPalette, QPainter, QPen
 
 from spectrum import Spectrum
 
@@ -50,6 +50,7 @@ class MainWindow(QMainWindow):
             app_size = QSize(int(app_height*(min_size[0]/min_size[1])), app_height)
         self.resize(app_size)
         
+        self.threadpool = QThreadPool()
 
         # Main 
         layout = QHBoxLayout()
@@ -84,8 +85,12 @@ class MainWindow(QMainWindow):
                 pj_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 pj_input.setValidator(double_validator)
                 pj_input.setMaximumWidth(50)
-                pj_input.textChanged.connect(partial(self.phasing_input_callback, spectrum, f"dim{i}_p{j}"))
                 pj_group_layout.addWidget(pj_input)
+                pj_input.textChanged.connect(
+                    partial(
+                        self.threaded, self.phasing_input_callback, spectrum, f"dim{i}_p{j}"
+                    )
+                )
             
                 pj_slider = QSlider(Qt.Orientation.Horizontal)
                 pj_slider.setObjectName(f"dim{i}_p{j}_slider")
@@ -93,7 +98,11 @@ class MainWindow(QMainWindow):
                 pj_slider.setMinimum(-360)
                 pj_slider.setMaximum(360)
                 pj_slider.setValue(0)
-                pj_slider.valueChanged.connect(partial(self.phasing_slider_callback, spectrum, f"dim{i}_p{j}"))
+                pj_slider.valueChanged.connect(
+                    partial(
+                        self.threaded, self.phasing_slider_callback, spectrum, f"dim{i}_p{j}"
+                    )
+                )
                 pj_group_layout.addWidget(pj_slider)
                 
                 pj_group.setLayout(pj_group_layout)
@@ -116,19 +125,89 @@ class MainWindow(QMainWindow):
         '''
         spectrum_container = QGroupBox("Spectrum")
         spectrum_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        spectrum_container_layout = QGridLayout()
+        spectrum_container_layout = QVBoxLayout()
         
         import_spectrum_button = QPushButton(text="Import spectrum")
         import_spectrum_button.clicked.connect(lambda: self.import_spectrum_button_callback(spectrum))
         spectrum_container_layout.addWidget(import_spectrum_button)
         
+        import_demo_spectrum_button = QPushButton(text="Import demo spectrum")
+        import_demo_spectrum_button.clicked.connect(lambda: self.import_demo_spectrum_button_callback(spectrum))
+        spectrum_container_layout.addWidget(import_demo_spectrum_button)
+        
+        plot_container_layout = QGridLayout()
+        plot_container_layout.setHorizontalSpacing(0)
+        plot_container_layout.setVerticalSpacing(0)
+        
         spectrum_obj = QLabel(self)
         spectrum_obj.setObjectName("spectrum_obj")
+        spectrum_obj.setStyleSheet("border-style: solid; border-width: 2px; border-color:black")
         spectrum_obj.setPixmap(self.initialize_empty_spectrum())
-        spectrum_container_layout.addWidget(spectrum_obj)
+        plot_container_layout.addWidget(spectrum_obj, 1, 1)
+        
+        ax_h_height = 50
+        ax_v_width = 100
+        axs = [
+            {"orientation": "h", "grid_pos": (0,1), "label_first": True},
+            {"orientation": "v", "grid_pos": (1,0), "label_first": True},
+            {"orientation": "v", "grid_pos": (1,2), "label_first": False},
+            {"orientation": "h", "grid_pos": (2,1), "label_first": False}
+        ]
+        for ax_dict in axs:
+            #h_axis_top = Color("red")
+            #h_axis_top.setFixedHeight(axis_size)
+            #plot_container_layout.addWidget(h_axis_top, 0, 1)
+            #
+            #v_axis_left = Color("blue")
+            #v_axis_left.setFixedWidth(axis_size)
+            #plot_container_layout.addWidget(v_axis_left, 1, 0)
+            #
+            #v_axis_right = Color("green")
+            #v_axis_right.setFixedWidth(axis_size)
+            #plot_container_layout.addWidget(v_axis_right, 1, 2)
+            grid_pos = ax_dict["grid_pos"]
+            orientation = ax_dict["orientation"]
+            ax_label_name = "F2 [ppm]" if orientation == "h" else "F1 [ppm]"
+            label_first = ax_dict["label_first"]
+            
+        
+            # Axis container
+            ax = QWidget()
+            ax.setObjectName("spectrum_ax")
+            ax.setVisible(False)
+            if orientation == "h":
+                ax.setFixedHeight(ax_h_height)
+            else:
+                ax.setFixedWidth(ax_v_width)
+            #h_axis_bottom.setStyleSheet("border-style: solid; border-width: 2px; border-color:black")
+            ax_layout = QVBoxLayout() if orientation == "h" else QHBoxLayout()
+            ax_layout.setContentsMargins(0,0,0,0)
+            ax_layout.setSpacing(0)
+            
+            # Ticks container
+            ax_ticks = QLabel()
+            ax_ticks.setObjectName("spectrum_ticks")
+            
+            # Axis label
+            ax_label = QLabel(ax_label_name, alignment=Qt.AlignmentFlag.AlignCenter)
+            
+            if label_first:
+                ax_layout.addWidget(ax_label)
+                ax_layout.addWidget(ax_ticks)
+            else:
+                ax_layout.addWidget(ax_ticks)
+                ax_layout.addWidget(ax_label)
+            
+            ax.setLayout(ax_layout)
+            plot_container_layout.addWidget(ax, *grid_pos)
+        
+        
+        spectrum_container_layout.addLayout(plot_container_layout)
+        
         
         spectrum_container.setLayout(spectrum_container_layout)
         layout.addWidget(spectrum_container)
+        
         
         # Master container
         content = QWidget()
@@ -149,12 +228,30 @@ class MainWindow(QMainWindow):
             'Open file',
             'c:\\',
         )  
-        print(f"Opening: {file_path[0]}")
+        print(f"import_spectrum_button_callback opening:{file_path[0]}")
         
         spectrum.load(file_path[0])
         
-        print("156", spectrum.data.shape)
+        self.show_axis(spectrum)
+        
         self.display_spectrum(spectrum)
+        
+        
+        self.toggle_phasing_controls()
+        return
+    
+    
+    def import_demo_spectrum_button_callback(self, spectrum) -> None:
+                # Load and display spectrum
+        file_path = "src/test.fid"
+        print(f"import_spectrum_button_callback opening:{file_path}")
+        
+        spectrum.load(file_path)
+        
+        self.show_axis(spectrum)
+        
+        self.display_spectrum(spectrum)
+        
         
         self.toggle_phasing_controls()
         return
@@ -162,8 +259,8 @@ class MainWindow(QMainWindow):
 
     def display_spectrum(self, spectrum: Spectrum) -> None:
         
-        print(spectrum.dim0_ppm_scale[0], spectrum.dim0_ppm_scale[-1])
-        print(spectrum.dim1_ppm_scale[0], spectrum.dim1_ppm_scale[-1])
+        #print(spectrum.dim0_ppm_scale[0], spectrum.dim0_ppm_scale[-1])
+        #print(spectrum.dim1_ppm_scale[0], spectrum.dim1_ppm_scale[-1])
         limits0 = [70, 40]
         limits1 = [135, 6]
         limits0 = [70, 40]
@@ -200,7 +297,7 @@ class MainWindow(QMainWindow):
         min_value = _median_absolute_deviation(data)*5
         
         
-        print(data.max())
+        #print(data.max())
         
         normalized_array = (data - min_value) / (max_value - min_value)
         normalized_array = np.clip(normalized_array, 0, 1)  # Ensure values stay within [0, 1]
@@ -219,6 +316,119 @@ class MainWindow(QMainWindow):
         spectrum_object.setPixmap(pixmap)
     
     
+    def show_axis(self, spectrum) -> None:
+        axs = self.findChildren(QWidget, "spectrum_ax")
+        axis_config = {
+            "top": False,
+            "left": False,
+            "right": True,
+            "bottom": True
+        }
+        for ax in axs:
+            
+            ax_ticks = ax.findChild(QLabel, "spectrum_ticks")
+            ax_children = [c.objectName() for c in ax.children() if isinstance(c, QLabel)]
+            ax_label_first = True if ax_children.index("spectrum_ticks") == 1 else False
+            ax_orientation = "h" if ax_ticks.width() > ax_ticks.height() else "v"
+            
+            ax_position = ""
+            if ax_orientation == "h" and ax_label_first:
+                ax_position = "top"
+            elif ax_orientation == "v" and ax_label_first:
+                ax_position = "left"
+            elif ax_orientation == "v" and not ax_label_first:
+                ax_position = "right"
+            elif ax_orientation == "h" and not ax_label_first:
+                ax_position = "bottom"
+                
+            if axis_config[ax_position] != True:
+                continue
+            
+            ax.setVisible(True)
+            ax_ticks_w = ax_ticks.width()
+            ax_ticks_h = ax_ticks.height()
+            ax_orientation = "h" if ax_ticks.width() > ax_ticks.height() else "v"
+            
+            ax_label_name = f'{spectrum.dic["FDF2LABEL"]} [ppm]' if ax_orientation == "h" else f'{spectrum.dic["FDF1LABEL"]}\n[ppm]'
+            ax_label = ax.findChild(QLabel, "")
+            ax_label.setText(ax_label_name)
+            
+            
+            #print(ax_orientation, ax_ticks_w, ax_ticks_h, ax_ticks_w < ax_ticks_h)
+            pixmap = QPixmap(ax_ticks_w, ax_ticks_h)
+            pixmap.fill(QColor("#F0F0F0"))
+            
+            painter = QPainter(pixmap)
+            pen = QPen()
+            pen.setColor(QColor("#000000"))
+            pen.setWidth(2)
+            painter.setPen(pen)
+            
+            
+            ax_ppm_scale = spectrum.dim1_ppm_scale if ax_orientation == "h" else spectrum.dim0_ppm_scale
+            #print(spectrum.dim0_ppm_scale) # 15 N
+            #print(spectrum.dim1_ppm_scale) # 13 C
+            #print(ax_ppm_scale[0], ax_ppm_scale[-1])
+            
+            def generate_ticks(ppm_scale: np.array, axis_size: float, nr_ticks:int=6) -> list:
+                print(ppm_scale)
+                ticks_ppm = np.linspace(np.floor(ppm_scale[0]), np.ceil(ppm_scale[-1]), nr_ticks)
+                print("Ticks ppm:", ticks_ppm)
+                ticks_unitless = np.absolute((ticks_ppm - ppm_scale[0]) / (ppm_scale[0] - ppm_scale[-1]))
+                print("Ticks unitless:", ticks_unitless)
+                ticks_px = list(ticks_unitless * axis_size)
+                ticks_px = [int(p) for p in ticks_px]
+                print("Ticks px:", ticks_px)
+                return ticks_ppm, ticks_px
+                
+            ticks_labels, ticks_positions = generate_ticks(ax_ppm_scale, max(ax_ticks_w, ax_ticks_h), 10)
+            
+            tick_length = 5   # length of each tick
+            text_width = 40
+            text_pos = 10
+            text_height = 10
+
+            # Loop to draw ticks vertically
+            print(ax_orientation, ax_label_first)
+            for i in range(len(ticks_positions)):
+                p = ticks_positions[i]
+                label = ticks_labels[i]
+                if ax_orientation == "h":
+                    if p - text_width < 0 or p + text_width > ax_ticks_w:
+                        continue
+                    
+                    if ax_label_first:
+                        ticks_start_pos = (p, ax_ticks_h)
+                        ticks_end_pos = (p, ax_ticks_h-tick_length)
+                        text_rectF = QRectF(p-text_width/2, ax_ticks_h-text_pos-text_height, text_width, text_height)
+                    else:
+                        ticks_start_pos = (p, 0)
+                        ticks_end_pos = (p, tick_length)
+                        text_rectF = QRectF(p-text_width/2, text_pos, text_width, text_height)
+                else:
+                    if p - text_height < 0 or p + text_height > ax_ticks_h:
+                        continue
+                    
+                    if ax_label_first:
+                        ticks_start_pos = (ax_ticks_w, p)
+                        ticks_end_pos = (ax_ticks_w-tick_length, p)
+                        text_rectF = QRectF(ax_ticks_w-text_pos-text_width, p-text_height/2, text_width, text_height)
+                    else:
+                        ticks_start_pos = (0, p)
+                        ticks_end_pos = (tick_length, p)
+                        text_rectF = QRectF(text_pos, p-text_height/2, text_width, text_height)
+                    
+                painter.drawLine(*ticks_start_pos, *ticks_end_pos)
+                painter.drawText(
+                    text_rectF,
+                    Qt.AlignmentFlag.AlignCenter,
+                    str(np.around(label, 2))
+                )
+            
+            painter.end()
+            ax_ticks.setPixmap(pixmap)
+    
+    
     def toggle_phasing_controls(self) -> None:
         for i in [0, 1]:
             for j in [0, 1]:
@@ -228,11 +438,27 @@ class MainWindow(QMainWindow):
                 phasing_slider = self.findChild(QSlider, f"dim{i}_p{j}_slider")
                 phasing_slider.setEnabled(not phasing_slider.isEnabled())
      
+     
+     
+    def threaded(self, *args):
+        print(f"threaded self:{self}")
+        print(f"threaded args:{args}")
+        worker = Worker(*args)
+        self.threadpool.start(worker)
     
-    def phasing_input_callback(self, spectrum: Spectrum, identifier: str) -> None:
+    
+    def phasing_input_callback(self, spectrum: Spectrum, identifier: str, *args) -> None:
         # reset on empty input
         phasing_input = self.findChild(QLineEdit, f"{identifier}_input")
+        if phasing_input == None:
+            return
         print("phasing_input", f"{identifier}_input", phasing_input.text())
+        
+        try:
+            int(float(phasing_input.text()))
+        except ValueError:
+            return
+        
         if phasing_input.text() == "":
             phasing_input.setText("0")
             self.findChild(
@@ -253,8 +479,11 @@ class MainWindow(QMainWindow):
         self.update_plot(spectrum)
     
     
-    def phasing_slider_callback(self, spectrum: Spectrum, identifier: str) -> None:
+    def phasing_slider_callback(self, spectrum: Spectrum, identifier: str, *args) -> None:
         # change input
+        if self.findChild(QLineEdit, f"{identifier}_input") == None:
+            return
+    
         self.findChild(
             QLineEdit, f"{identifier}_input"
         ).setText(
@@ -281,16 +510,40 @@ class MainWindow(QMainWindow):
         self.display_spectrum(spectrum)
 
 
-def create_image(size, sigma):
-    x, y = np.meshgrid(np.linspace(-1, 1, size), np.linspace(-1, 1, size))
-    d = np.sqrt(x*x + y*y)
-    a = np.exp(-(d**2 / (2.0 * sigma**2)))
-    
-    #a = np.random.randint(0, 256, (256, 256), dtype=np.uint8)
-    a = a/np.max(a)
-    a = (a*255).astype(np.uint8)
-    
-    h, w = a.shape
-    img = QImage(a.data, w, h, QImage.Format.Format_Indexed8)
-    pixmap = QPixmap.fromImage(img)
-    return pixmap
+class Worker(QRunnable):
+    '''
+    Worker thread
+
+    Inherits from QRunnable to handler worker thread setup, signals and wrap-up.
+
+    :param callback: The function callback to run on this worker thread. Supplied args and
+                     kwargs will be passed through to the runner.
+    :type callback: function
+    :param args: Arguments to pass to the callback function
+    :param kwargs: Keywords to pass to the callback function
+
+    '''
+
+    def __init__(self, fn, *args, **kwargs):
+        super().__init__()
+        # Store constructor arguments (re-used for processing)
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+
+    @pyqtSlot()
+    def run(self):
+        '''
+        Initialise the runner function with passed args, kwargs.
+        '''
+        self.fn(*self.args, **self.kwargs)
+
+
+class Color(QWidget):
+    def __init__(self, color):
+        super().__init__()
+        self.setAutoFillBackground(True)
+
+        palette = self.palette()
+        palette.setColor(QPalette.ColorRole.Window, QColor(color))
+        self.setPalette(palette)
