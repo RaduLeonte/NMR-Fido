@@ -1,5 +1,7 @@
 import nmrglue as ng
 from copy import deepcopy
+from functools import wraps
+from time import time
 
 import processing
 
@@ -19,6 +21,10 @@ class Spectrum:
         self.dim1_p0 = 0
         self.dim1_p1 = 0
         
+        """
+        Define processor operations.
+        Using only nmrglue -> on avg 0.142 s -> 7 Hz
+        """
         self.processor = Processor()
         self.processor.add_operation(ng.pipe_proc.sp, off=0.5, end=1.0, pow=2, c=1.0) # adjustable sine bell window
         #self.processor.add_operation(processing.zero_fill)
@@ -91,6 +97,17 @@ class Spectrum:
         self.process()
 
 
+def timing(f):
+    @wraps(f)
+    def wrap(*args, **kw):
+        ts = time()
+        result = f(*args, **kw)
+        te = time()
+        print('func:%r args:[%r, %r] took: %2.4f sec' % \
+          (f.__name__, args, kw, te-ts))
+        return result
+    return wrap
+
 class Processor:
     
     def __init__(self):
@@ -100,7 +117,7 @@ class Processor:
     def add_operation(self, func, *args, **kwargs) -> None:
         self.operations.append((func, args, kwargs))
     
-    
+    @timing
     def run(self, spectrum: Spectrum) -> None:
         dic = deepcopy(spectrum.fid_dic)
         data = deepcopy(spectrum.fid_data)
@@ -143,8 +160,6 @@ def print_dict_diff(dict1: dict, dict2: dict):
     for key in common_keys:
         if dict1[key] != dict2[key]:
             print(f"Difference in key '{key}': dict1 = {dict1[key]}, dict2 = {dict2[key]}")
-
-
         
 if __name__ == "__main__":
     dic, data = ng.pipe.read("test.fid")
