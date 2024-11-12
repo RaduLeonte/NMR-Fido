@@ -11,7 +11,7 @@ import pyqtgraph as pg
 from contourpy import contour_generator
 
 
-from PyQt6.QtCore import QSize, Qt, QThreadPool, QRunnable, pyqtSlot, QRectF
+from PyQt6.QtCore import QSize, Qt, QThreadPool, QRunnable, pyqtSlot, QPointF, QRectF
 from PyQt6.QtWidgets import *
 from PyQt6.QtGui import QImage, QPixmap, QIcon, qRgb, QDoubleValidator, QColor, QPalette, QPainter, QPen, QResizeEvent
 
@@ -157,7 +157,7 @@ class MainWindow(QMainWindow):
         spectrum_obj = SpectrumDisplay(self)
         spectrum_obj.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         spectrum_obj.setObjectName("spectrum_obj")
-        #spectrum_obj.setStyleSheet("border-style: solid; border-width: 2px; border-color:black")
+        spectrum_obj.setStyleSheet("border-style: solid; border-width: 1px; border-color:white")
         spectrum_obj.setPixmap(self.initialize_empty_spectrum())
         plot_container_layout.addWidget(spectrum_obj, 1, 1)
         
@@ -172,6 +172,9 @@ class MainWindow(QMainWindow):
         plot_graph_glw.ci.layout.setContentsMargins(0,0,0,0)
         
         plot_graph = plot_graph_glw.addPlot()
+        plot_graph.setMouseEnabled(x=False, y=False)
+        plot_graph.hideButtons()
+        plot_graph.setMenuEnabled(False)
         plot_graph.setContentsMargins(0,0,0,0)
         plot_graph.setDefaultPadding(0)
         background_color = QColor("FFFFFF")
@@ -316,7 +319,7 @@ class MainWindow(QMainWindow):
         y_index_end = np.where(spectrum.dim0_ppm_scale == min(spectrum.dim0_ppm_scale, key=lambda x:abs(x-limitsY[1])))[0][0]
         
         data = deepcopy(spectrum.data)
-    
+
         
         print(f"MainWindow.display_spectrum -> {data.shape=}")
         #data = data[y_index_start:y_index_end, x_index_start:x_index_end]
@@ -372,30 +375,46 @@ class MainWindow(QMainWindow):
             
         else:
             cont_gen = contour_generator(z=data)
-            nr_levels = 1
-            levels = np.linspace(min_value, max_value, nr_levels)
-            levels = [max_value]
+            base_level = median_abs_value*3
+            nr_levels = 32
+            multiplier = 1.2
+            levels = [base_level*np.power(multiplier, np.abs(x))*np.sign(x) for x in np.arange(-nr_levels, nr_levels)]
+            #levels = [max_value]
             contours = cont_gen.multi_lines(levels)
-            #print(f"MainWindow.display_spectrum -> {len(contours[0][0])=} {contours[0][0]=}")
+            #print(f"MainWindow.display_spectrum -> {levels=}")
             
-            pixmap = QPixmap(data.shape[1], data.shape[0])
+            scale = 32
+            pixmap = QPixmap(data.shape[1]*scale, data.shape[0]*scale)
             background_color = QColor("#F0F0F0")
             background_color.setAlpha(1)
             pixmap.fill(background_color)
             
             painter = QPainter(pixmap)
-            pen = QPen()
-            pen.setColor(QColor("#F0F0F0"))
-            pen.setWidth(2)
-            painter.setPen(pen)
+            pen_width = 12
 
-            for contour in contours:
+            for contour, level in zip(contours, levels):
+                if level == 0.0:
+                    continue
+                
+                if level > 0:
+                    pen = QPen()
+                    pen.setWidth(pen_width)
+                    pen.setColor(QColor("#1f9c74"))
+                    painter.setPen(pen)
+                else:
+                    #pen.setColor(QColor("#fabd2e"))
+                    pen = QPen()
+                    pen.setWidth(pen_width)
+                    #pen.setColor(QColor("#fb481e"))
+                    pen.setColor(QColor("#fabd2e"))
+                    painter.setPen(pen)
+                
                 for contour_line in contour:
-                    for i in range(len(contour_line)):
-                        print(contour_line[i])
-                break
-            painter.drawLine(0, 0, data.shape[1], data.shape[0])
-            
+                    for i in range(len(contour_line)-1):
+                        painter.drawLine(
+                            QPointF(contour_line[i][0]*scale, contour_line[i][1]*scale),
+                            QPointF(contour_line[i+1][0]*scale, contour_line[i+1][1]*scale)
+                        )
             painter.end()
         
         spectrum_object = self.findChild(QLabel, "spectrum_obj")
