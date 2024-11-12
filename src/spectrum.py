@@ -5,6 +5,7 @@ from time import time
 
 import processing
 
+
 class Spectrum:
 
     def __init__(self):
@@ -23,7 +24,7 @@ class Spectrum:
         
         """
         Define processor operations.
-        Using only nmrglue -> on avg 0.142 s -> 7 Hz
+        Using nmrglue + custom phasing -> on avg 0.142 s -> 7 Hz
         """
         self.processor = Processor()
         self.processor.add_operation(ng.pipe_proc.sp, off=0.5, end=1.0, pow=2, c=1.0) # adjustable sine bell window
@@ -108,6 +109,7 @@ def timing(f):
         return result
     return wrap
 
+
 class Processor:
     
     def __init__(self):
@@ -131,6 +133,7 @@ class Processor:
         
         spectrum.dic = dic
         spectrum.data = data
+
 
 def print_dict_diff(dict1: dict, dict2: dict):
     '''
@@ -160,7 +163,8 @@ def print_dict_diff(dict1: dict, dict2: dict):
     for key in common_keys:
         if dict1[key] != dict2[key]:
             print(f"Difference in key '{key}': dict1 = {dict1[key]}, dict2 = {dict2[key]}")
-        
+
+
 if __name__ == "__main__":
     dic, data = ng.pipe.read("test.fid")
     print(data.shape)
