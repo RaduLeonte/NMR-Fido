@@ -4,9 +4,11 @@ import sys
 import numpy as np
 import nmrglue as ng
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 from functools import partial
 from copy import deepcopy
 import pyqtgraph as pg
+from contourpy import contour_generator
 
 
 from PyQt6.QtCore import QSize, Qt, QThreadPool, QRunnable, pyqtSlot, QRectF
@@ -52,7 +54,11 @@ class MainWindow(QMainWindow):
             app_size = QSize(int(app_height*(min_size[0]/min_size[1])), app_height)
         self.resize(app_size)
         
+        """
+        Thread pool
+        """
         self.threadpool = QThreadPool()
+
 
         # Main 
         layout = QHBoxLayout()
@@ -340,24 +346,59 @@ class MainWindow(QMainWindow):
             median = np.median(data)
             return k*np.median(np.abs(data - median))
         
-        max_value = _median_absolute_deviation(data)*30
+        median_abs_value = _median_absolute_deviation(data)
+        max_value = median_abs_value*20
         min_value = max_value*-1
         print(f"MainWindow.display_spectrum -> {min_value=} {max_value=}")
         
-        
-        normalized_array = (data - min_value) / (max_value - min_value)
-        normalized_array = np.clip(normalized_array, 0, 1)  # Ensure values stay within [0, 1]
-        
-        cmap = plt.get_cmap("magma")
-        rgba_array = cmap(normalized_array)
-        rgb_array = (rgba_array[:, :, :3] * 255).astype(np.uint8)
-        
-        img = QImage(rgb_array.data, rgb_array.shape[1], rgb_array.shape[0], QImage.Format.Format_RGB888)
-        
-        pixmap = QPixmap.fromImage(img)
+        draw_heatmap = False
+        if draw_heatmap:
+            normalized_array = (data - min_value) / (max_value - min_value)
+            normalized_array = np.clip(normalized_array, 0, 1)  # Ensure values stay within [0, 1]
+            
+            colors = [
+                (0, 'pink'),
+                (0.5, 'black'),
+                (1, 'lightskyblue')
+            ]  # Red for positive values
+            cmap = plt.get_cmap("coolwarm")
+            cmap = LinearSegmentedColormap.from_list("black_to_blue_red", colors, N=256)
+            rgba_array = cmap(normalized_array)
+            rgb_array = (rgba_array[:, :, :3] * 255).astype(np.uint8)
+            
+            img = QImage(rgb_array.data, rgb_array.shape[1], rgb_array.shape[0], QImage.Format.Format_RGB888)
+            
+            pixmap = QPixmap.fromImage(img)
+            
+        else:
+            cont_gen = contour_generator(z=data)
+            nr_levels = 1
+            levels = np.linspace(min_value, max_value, nr_levels)
+            levels = [max_value]
+            contours = cont_gen.multi_lines(levels)
+            #print(f"MainWindow.display_spectrum -> {len(contours[0][0])=} {contours[0][0]=}")
+            
+            pixmap = QPixmap(data.shape[1], data.shape[0])
+            background_color = QColor("#F0F0F0")
+            background_color.setAlpha(1)
+            pixmap.fill(background_color)
+            
+            painter = QPainter(pixmap)
+            pen = QPen()
+            pen.setColor(QColor("#F0F0F0"))
+            pen.setWidth(2)
+            painter.setPen(pen)
+
+            for contour in contours:
+                for contour_line in contour:
+                    for i in range(len(contour_line)):
+                        print(contour_line[i])
+                break
+            painter.drawLine(0, 0, data.shape[1], data.shape[0])
+            
+            painter.end()
         
         spectrum_object = self.findChild(QLabel, "spectrum_obj")
-        
         pixmap = pixmap.scaled(spectrum_object.width(), spectrum_object.height())
         spectrum_object._pixmap = pixmap
         spectrum_object.setPixmap(pixmap)
