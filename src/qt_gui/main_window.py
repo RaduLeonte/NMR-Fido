@@ -39,7 +39,7 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(QIcon("python_icon.png"))
         
         # Minimum size
-        min_size = (700, 400)
+        min_size = (820, 400)
         self.setMinimumSize(QSize(*min_size))
         
         # Set init size based on screen aspect ratio
@@ -58,12 +58,13 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout()
         
         '''
-        Controls
+        Phasing Controls
         '''
         controls_group = QGroupBox("Phasing controls")
         controls_group.setFixedWidth(400)
         controls_group.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Expanding)
         controls_group_layout = QVBoxLayout()
+        controls_group_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
         for i in [0, 1]:
             controls = QGroupBox(f"Dimension {i}")
@@ -110,8 +111,8 @@ class MainWindow(QMainWindow):
             controls.setLayout(controls_layout)
             controls_group_layout.addWidget(controls)
             
-            controls.setLayout(controls_layout)
-            controls_group_layout.addWidget(controls)
+            #controls.setLayout(controls_layout)
+            #controls_group_layout.addWidget(controls)
         
         
         controls_group_layout.addStretch()
@@ -126,24 +127,56 @@ class MainWindow(QMainWindow):
         spectrum_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         spectrum_container_layout = QVBoxLayout()
         
+        import_spectrum_buttons_layout = QHBoxLayout()
+        # Import spectrum button
         import_spectrum_button = QPushButton(text="Import spectrum")
         import_spectrum_button.clicked.connect(lambda: self.import_spectrum_button_callback(spectrum))
-        spectrum_container_layout.addWidget(import_spectrum_button)
+        import_spectrum_buttons_layout.addWidget(import_spectrum_button)
         
+        # Import demo spectrum button
         import_demo_spectrum_button = QPushButton(text="Import demo spectrum")
         import_demo_spectrum_button.clicked.connect(lambda: self.import_demo_spectrum_button_callback(spectrum))
-        spectrum_container_layout.addWidget(import_demo_spectrum_button)
+        import_spectrum_buttons_layout.addWidget(import_demo_spectrum_button)
         
+        spectrum_container_layout.addLayout(import_spectrum_buttons_layout)
+        
+        # Spectrum grid layout
+        plot_container = QWidget()
         plot_container_layout = QGridLayout()
         plot_container_layout.setHorizontalSpacing(0)
         plot_container_layout.setVerticalSpacing(0)
+        #plot_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         
+        # Main spectrum display
         spectrum_obj = SpectrumDisplay(self)
+        spectrum_obj.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         spectrum_obj.setObjectName("spectrum_obj")
         #spectrum_obj.setStyleSheet("border-style: solid; border-width: 2px; border-color:black")
         spectrum_obj.setPixmap(self.initialize_empty_spectrum())
         plot_container_layout.addWidget(spectrum_obj, 1, 1)
         
+        """
+        1D TRACE
+        """
+        plot_graph_glw = pg.GraphicsLayoutWidget()
+        plot_graph_glw.setObjectName("horizontal_trace")
+        plot_graph_glw.setVisible(False)
+        plot_graph_glw.setFixedHeight(200)
+        plot_graph_glw.setStyleSheet("background-color: rgba(0, 0, 0, 0)")
+        plot_graph_glw.ci.layout.setContentsMargins(0,0,0,0)
+        
+        plot_graph = plot_graph_glw.addPlot()
+        plot_graph.setContentsMargins(0,0,0,0)
+        plot_graph.setDefaultPadding(0)
+        background_color = QColor("FFFFFF")
+        background_color.setAlpha(0)
+        plot_graph_glw.setBackground(background_color)
+        plot_graph.hideAxis("left")
+        plot_graph.hideAxis("bottom")
+        self.h_trace_line = plot_graph.plot()
+        plot_container_layout.addWidget(plot_graph_glw, 1, 1)
+        
+        # Spectrum axes
         ax_h_height = 50
         ax_v_width = 100
         axs = [
@@ -189,23 +222,10 @@ class MainWindow(QMainWindow):
             ax.setLayout(ax_layout)
             plot_container_layout.addWidget(ax, *grid_pos)
         
+        plot_container.setLayout(plot_container_layout)
+        spectrum_container_layout.addWidget(plot_container)
         
         
-        
-        spectrum_container_layout.addLayout(plot_container_layout)
-        
-        plot_graph = pg.PlotWidget()
-        plot_graph.setVisible(False)
-        plot_graph.setObjectName("horizontal_trace")
-        plot_graph.setFixedHeight(200)
-        background_color = QColor("FFFFFF")
-        background_color.setAlpha(1)
-        plot_graph.setBackground(background_color)
-        plot_graph.getAxis("left").setTicks([])
-        plot_graph.getAxis("left").setTextPen(background_color)
-        plot_graph.getAxis("bottom").setTicks([])
-        self.h_trace_line = plot_graph.plot()
-        spectrum_container_layout.addWidget(plot_graph)
         
         spectrum_container.setLayout(spectrum_container_layout)
         layout.addWidget(spectrum_container)
@@ -293,11 +313,11 @@ class MainWindow(QMainWindow):
     
         
         print(f"MainWindow.display_spectrum -> {data.shape=}")
-        data = data[y_index_start:y_index_end, x_index_start:x_index_end]
+        #data = data[y_index_start:y_index_end, x_index_start:x_index_end]
         print(f"MainWindow.display_spectrum -> X limits {x_index_start=}; {x_index_end=}")
         print(f"MainWindow.display_spectrum -> Y limits {y_index_start=}; {y_index_end=}")
         
-        #data = data[180:350, 1900:2160]
+        data = data[180:350, 1900:2160]
         
         data = np.flip(data, 0)
         
@@ -321,7 +341,7 @@ class MainWindow(QMainWindow):
             return k*np.median(np.abs(data - median))
         
         max_value = _median_absolute_deviation(data)*30
-        min_value = _median_absolute_deviation(data)*1
+        min_value = max_value*-1
         print(f"MainWindow.display_spectrum -> {min_value=} {max_value=}")
         
         
@@ -454,7 +474,7 @@ class MainWindow(QMainWindow):
         """Find all phasing controls float inputs and sliders and
         enable them.
         """
-        h_trace = self.findChild(pg.PlotWidget, "horizontal_trace")
+        h_trace = self.findChild(pg.GraphicsLayoutWidget, "horizontal_trace")
         h_trace.setVisible(True)
         
         

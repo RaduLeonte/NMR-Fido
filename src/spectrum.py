@@ -20,32 +20,36 @@ class Spectrum:
         self.dim1_p1 = 0
         
         self.processor = Processor()
-        #dic, data = ng.pipe_proc.sp(dic, data, off=0.5, end=1.0, pow=2, c=1.0) # adjustable sine bell window
-        self.processor.add_operation(ng.pipe_proc.sp, off=0.5, end=1.0, pow=2, c=1.0)
-        #dic, data = ng.pipe_proc.zf(dic, data, auto=True) # zero filling
+        self.processor.add_operation(ng.pipe_proc.sp, off=0.5, end=1.0, pow=2, c=1.0) # adjustable sine bell window
+        #self.processor.add_operation(processing.zero_fill)
+        print(self.dic)
         self.processor.add_operation(ng.pipe_proc.zf, auto=True)
-        #dic, data = ng.pipe_proc.ft(dic, data, auto=True) # fourier transform
+        #self.processor.add_operation(processing.fourier_transform)
         self.processor.add_operation(ng.pipe_proc.ft, auto=True)
-        #dic, data = ng.pipe_proc.ps(dic, data, p0=self.dim0_p0, p1=self.dim0_p1) # phase correction
-        self.processor.add_operation(ng.pipe_proc.ps, p0=lambda: self.dim0_p0, p1=lambda: self.dim0_p1)
-        #dic, data = ng.pipe_proc.di(dic, data) # delete imaginary part
-        self.processor.add_operation(ng.pipe_proc.di)
+        self.processor.add_operation(
+            processing.phase_correction,
+            p0=lambda: self.dim0_p0,
+            p1=lambda: self.dim0_p1,
+            pivot=1461
+        )
+        self.processor.add_operation(ng.pipe_proc.di) # delete imaginary part
 
-        #dic, data = ng.pipe_proc.tp(dic, data) # transpose
+        #self.processor.add_operation(processing.transpose)
         self.processor.add_operation(ng.pipe_proc.tp)
         
-        #dic, data = ng.pipe_proc.sp(dic, data, off=0.5, end=1.0, pow=2, c=1.0) # adjustable sine bell window
-        self.processor.add_operation(ng.pipe_proc.sp, off=0.5, end=1.0, pow=2, c=1.0)
-        #dic, data = ng.pipe_proc.zf(dic, data, auto=True)  # zero filling
+        self.processor.add_operation(ng.pipe_proc.sp, off=0.5, end=1.0, pow=2, c=1.0) # adjustable sine bell window
+        #self.processor.add_operation(processing.zero_fill)
         self.processor.add_operation(ng.pipe_proc.zf, auto=True)
-        #dic, data = ng.pipe_proc.ft(dic, data, auto=True) # fourier transform
+        #self.processor.add_operation(processing.fourier_transform)
         self.processor.add_operation(ng.pipe_proc.ft, auto=True)
-        #dic, data = ng.pipe_proc.ps(dic, data, p0=self.dim1_p0, p1=self.dim1_p1) # phase correction
-        self.processor.add_operation(ng.pipe_proc.ps, p0=lambda: self.dim1_p0, p1=lambda: self.dim1_p1)
-        #dic, data = ng.pipe_proc.di(dic, data) # delete imaginary part
-        self.processor.add_operation(ng.pipe_proc.di)
+        self.processor.add_operation(
+            processing.phase_correction,
+            p0=lambda: self.dim1_p0,
+            p1=lambda: self.dim1_p1
+        )
+        self.processor.add_operation(ng.pipe_proc.di) # delete imaginary part
         
-        #self.dic, self.data = ng.pipe_proc.tp(dic, data) # transpose
+        #self.processor.add_operation(processing.transpose)
         self.processor.add_operation(ng.pipe_proc.tp)
         
         
@@ -103,11 +107,42 @@ class Processor:
         for func, args, kwargs in self.operations:
             eval_args = [arg() if callable(arg) else arg for arg in args]
             eval_kwargs = {k: v() if callable(v) else v for k, v in kwargs.items()}
-            #print(f"Processor.run {func.__name__} -> args:{eval_args}; kwargs:{eval_kwargs}")
+            print(f"Processor.run {func.__name__} -> args:{eval_args}; kwargs:{eval_kwargs}")
+            dicb4 = deepcopy(dic)
             dic, data = func(dic, data, *eval_args, **eval_kwargs)
+            #print_dict_diff(dicb4, dic)
         
         spectrum.dic = dic
         spectrum.data = data
+
+def print_dict_diff(dict1: dict, dict2: dict):
+    '''
+    Prints the differences between two dictionaries.
+
+    Parameters
+    ----------
+    dict1 : dict
+        First dictionary to compare.
+    dict2 : dict
+        Second dictionary to compare.
+
+    Prints differences in keys and values between the two dictionaries.
+    '''
+    # Keys that are in dict1 but not in dict2
+    diff1 = dict1.keys() - dict2.keys()
+    if diff1:
+        print(f"Keys in dict1 but not in dict2: {diff1}")
+    
+    # Keys that are in dict2 but not in dict1
+    diff2 = dict2.keys() - dict1.keys()
+    if diff2:
+        print(f"Keys in dict2 but not in dict1: {diff2}")
+    
+    # Keys that are in both dictionaries but have different values
+    common_keys = dict1.keys() & dict2.keys()
+    for key in common_keys:
+        if dict1[key] != dict2[key]:
+            print(f"Difference in key '{key}': dict1 = {dict1[key]}, dict2 = {dict2[key]}")
 
 
         

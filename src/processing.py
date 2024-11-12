@@ -1,6 +1,8 @@
 '''Processing'''
 
 import numpy as np
+import nmrglue as ng
+import matplotlib.pyplot as plt
 
 '''
 Window functions
@@ -97,7 +99,7 @@ def squared_sine(data: np.ndarray) -> np.ndarray:
 Processing
 '''
 
-def fourier_transform(data: np.ndarray) -> np.ndarray:
+def fourier_transform(dic, data: np.ndarray) -> np.ndarray:
     '''
     Complex fourier transform.
     
@@ -112,11 +114,14 @@ def fourier_transform(data: np.ndarray) -> np.ndarray:
         fourier transformed data
     '''
     
-    print("Stub function called: fourier_transform")
-    return None
+    return dic, np.apply_along_axis(
+        lambda fid: np.fft.fftshift(np.fft.ifft(fid)),
+        1,
+        data
+    )
 
 
-def zero_fill(data: np.ndarray, multiplier: int=2, final_size: int=None, pad: int=None) -> np.ndarray:
+def zero_fill(dic, data: np.ndarray, multiplier: int=2, final_size: int=None, pad: int=None) -> np.ndarray:
     '''
     Fills data with zeroes.
     
@@ -141,24 +146,31 @@ def zero_fill(data: np.ndarray, multiplier: int=2, final_size: int=None, pad: in
     ValueError
         when multiple filling modes are specified
     '''
-    
-    print("Stub function called: zero_fill")
-    return None
+    return dic, np.concatenate(
+        (
+            data,
+            np.zeros(data.shape, dtype=np.complex64) # complex128?
+        ),
+        axis=1
+    )
 
 
-def phase_correction(data: np.ndarray, p0: float=0.0, p1: float=0.0) -> np.ndarray:
+def phase_correction(dic, data: np.ndarray, p0: float=0.0, p1: float=0.0, pivot: int=0) -> np.ndarray:
     '''
-    Adjusts phase of data.
-    d'(f) = d(f) * exp( -i*(p0 + p1*f) )
+    Adjusts phase of data d(f).
+    f' = f * exp( -i*(p0 + p1*(f-pivot)))
     
     Parameters
     ----------
     data: np.ndarray
         n-dimensional array of complex numbers
     p0: float
-        Zero-th order phase correction term
+        Zero-th order phase correction term in degrees.
     p1: float
-        First order phase correction term
+        First order phase correction term in degrees.
+    pivot: int
+        Position of "pivot" for first order correction.
+        At this point, p1 does not affect the phase.
 
     Returns
     -------
@@ -166,8 +178,10 @@ def phase_correction(data: np.ndarray, p0: float=0.0, p1: float=0.0) -> np.ndarr
         phase-corrected data
     '''
     
-    print("Stub function called: phase_correction")
-    return None
+    first_order_correction = np.radians(p1)*((np.arange(data.shape[-1]) - pivot)/data.shape[-1])
+    phase_correction = np.exp(1.0j * (np.radians(p0) + first_order_correction))
+    
+    return dic, phase_correction * data
 
 
 def baseline_correction(data: np.ndarray) -> np.ndarray:
@@ -193,7 +207,7 @@ def baseline_correction(data: np.ndarray) -> np.ndarray:
 Miscellaneous
 '''
 
-def transpose(data: np.ndarray) -> np.ndarray:
+def transpose(dic, data: np.ndarray) -> np.ndarray:
     '''
     Transposes data.
     
@@ -208,8 +222,7 @@ def transpose(data: np.ndarray) -> np.ndarray:
         transposed data
     '''
     
-    print("Stub function called: transpose")
-    return None
+    return dic, data.transpose()
 
 
 def crop_data(data: np.ndarray) -> np.ndarray:
@@ -328,3 +341,34 @@ def multiply_constant(data: np.ndarray, constant: complex) -> np.ndarray:
     
     print("Stub function called: multiply_constant")
     return None
+
+
+if __name__ == "__main__":
+    dic, data =  ng.pipe.read("src/test.fid")
+    
+    fig, axs = plt.subplots(4)
+    phases = [
+        [[0.0, 0.0, 0], [0.0, 0.0, 0]],
+        [[-180.0, 0.0, 0], [0.0, 0.0, 0]],
+        [[-180.0, -180, 1461], [0.0, 0.0, 0]]
+    ]
+    for i in range(3):
+        pdata = zero_fill(data)
+        pdata = fourier_transform(pdata)
+        pdata = phase_correction(pdata, *phases[i][0])
+        # delete imaginaries
+        
+        pdata = transpose(pdata)
+        
+        pdata = zero_fill(pdata)
+        pdata = fourier_transform(pdata)
+        pdata = phase_correction(pdata, *phases[i][1])
+        # delete imaginaries
+        
+        pdata = transpose(pdata)
+        axs[i].plot(pdata[332])
+        axs[i].set_xlim([1425, 1550])
+
+
+    axs[3].imshow(np.real(pdata)*-1)
+    plt.show()
