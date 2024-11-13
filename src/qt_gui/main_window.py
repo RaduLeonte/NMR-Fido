@@ -1,6 +1,6 @@
 '''Initialize main window.'''
 
-import sys
+import os
 import numpy as np
 import nmrglue as ng
 import matplotlib.pyplot as plt
@@ -13,7 +13,7 @@ from contourpy import contour_generator
 
 from PyQt6.QtCore import QSize, Qt, QThreadPool, QRunnable, pyqtSlot, QPointF, QRectF
 from PyQt6.QtWidgets import *
-from PyQt6.QtGui import QImage, QPixmap, QIcon, qRgb, QDoubleValidator, QColor, QPalette, QPainter, QPen, QResizeEvent
+from PyQt6.QtGui import QImage, QPixmap, QIcon, qRgb, QDoubleValidator, QColor, QPalette, QPainter, QPen, QResizeEvent, QTransform
 
 from spectrum import Spectrum
 
@@ -24,21 +24,23 @@ def start_app(args: list):
     app: QApplication = QApplication(args)
     app.setStyle("fusion")
 
-    window: MainWindow = MainWindow(spectrum)
+    window: MainWindow = MainWindow(spectrum, app)
     window.show()
 
     app.exec()
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, spectrum) -> None:
+    def __init__(self, spectrum: Spectrum, app: QApplication) -> None:
         super().__init__()
         
-        '''
+        self.app = app
+        
+        """
         Window config
-        '''
+        """
         self.setWindowTitle("NMR Fido")
-        self.setWindowIcon(QIcon("python_icon.png"))
+        #self.setWindowIcon(QIcon("icon.png"))
         
         # Minimum size
         min_size = (820, 400)
@@ -54,17 +56,17 @@ class MainWindow(QMainWindow):
             app_size = QSize(int(app_height*(min_size[0]/min_size[1])), app_height)
         self.resize(app_size)
         
-        """
-        Thread pool
-        """
+        """Thread pool"""
         self.threadpool = QThreadPool()
 
 
-        # Main 
+        """
+        Main container
+        """
         layout = QHBoxLayout()
         
         '''
-        Phasing Controls
+        Window Region: Phasing controls
         '''
         controls_group = QGroupBox("Phasing controls")
         controls_group.setFixedWidth(400)
@@ -73,53 +75,7 @@ class MainWindow(QMainWindow):
         controls_group_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
         for i in [0, 1]:
-            controls = QGroupBox(f"Dimension {i}")
-            controls_layout = QVBoxLayout()
-            
-            # p0, p1
-            for j in [0, 1]:
-                pj_group = QWidget()
-                pj_group_layout = QHBoxLayout()
-                
-                pj_label = QLabel(f"p{j}")
-                pj_group_layout.addWidget(pj_label)
-                
-                pj_input = QLineEdit("0.0")
-                pj_input.setObjectName(f"dim{i}_p{j}_input")
-                pj_input.setEnabled(False)
-                double_validator = QDoubleValidator()
-                pj_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                pj_input.setValidator(double_validator)
-                pj_input.setMaximumWidth(50)
-                pj_group_layout.addWidget(pj_input)
-                pj_input.textChanged.connect(
-                    partial(
-                        self.threaded, self.phasing_input_callback, spectrum, f"dim{i}_p{j}"
-                    )
-                )
-            
-                pj_slider = QSlider(Qt.Orientation.Horizontal)
-                pj_slider.setObjectName(f"dim{i}_p{j}_slider")
-                pj_slider.setEnabled(False)
-                pj_slider.setMinimum(-360)
-                pj_slider.setMaximum(360)
-                pj_slider.setValue(0)
-                pj_slider.valueChanged.connect(
-                    partial(
-                        self.threaded, self.phasing_slider_callback, spectrum, f"dim{i}_p{j}"
-                    )
-                )
-                pj_group_layout.addWidget(pj_slider)
-                
-                pj_group.setLayout(pj_group_layout)
-                controls_layout.addWidget(pj_group)
-        
-            controls.setLayout(controls_layout)
-            controls_group_layout.addWidget(controls)
-            
-            #controls.setLayout(controls_layout)
-            #controls_group_layout.addWidget(controls)
-        
+            controls_group_layout.addWidget(self.create_phasing_controls(i, spectrum))
         
         controls_group_layout.addStretch()
         controls_group.setLayout(controls_group_layout)
@@ -127,12 +83,120 @@ class MainWindow(QMainWindow):
         layout.addWidget(controls_group)
         
         '''
-        Spectrum
+        Window Region: Spectrum
         '''
         spectrum_container = QGroupBox("Spectrum")
         spectrum_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         spectrum_container_layout = QVBoxLayout()
         
+        """Import buttons"""
+        spectrum_container_layout.addLayout(self.create_import_buttons(spectrum))
+        
+        """Plot grid"""
+        plot_container = QWidget()
+        plot_container_layout = QGridLayout()
+        plot_container_layout.setHorizontalSpacing(0)
+        plot_container_layout.setVerticalSpacing(0)
+        #plot_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        
+        """Main plot"""
+        #spectrum_obj = SpectrumDisplay(self)
+        #spectrum_obj.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        #spectrum_obj.setObjectName("spectrum_obj")
+        #spectrum_obj.setStyleSheet("border-style: solid; border-width: 1px; border-color:white")
+        #spectrum_obj.setPixmap(self.initialize_empty_spectrum())
+        #plot_container_layout.addWidget(spectrum_obj, 1, 1)
+        
+        self.plot = pg.PlotWidget()
+        plot_layout = pg.GraphicsLayout()
+        self.plot.setCentralItem(plot_layout)
+        self.plot_ax = pg.PlotItem()
+        self.plot_ax.showAxis("right")
+        self.plot_ax.hideAxis("left")
+        self.plot_ax.getAxis("bottom").setLabel("Dim 0 [ppm]", color="#FFFFFF")
+        self.plot_ax.getAxis("bottom").setTextPen("w")
+        self.plot_ax.getAxis("right").setLabel("Dim 1\n[ppm]", color="#FFFFFF")
+        self.plot_ax.getAxis("right").label.setRotation(0)
+        self.plot_ax.getAxis("right").label.setTextWidth(60)
+        self.plot_ax.getAxis("right").setTextPen("w")
+        #self.plot_ax.getAxis("right").label.adjustSize()
+        #self.plot_ax.getAxis("right").setStyle(tickTextOffset=500)
+        self.plot.setBackground(QColor(0, 0, 0, 0))
+        plot_layout.addItem(self.plot_ax)
+        self.plot_contours = []
+        self.plot_levels = []
+        plot_container_layout.addWidget(self.plot, 1, 1)
+        
+        """Horizontal trace"""
+        plot_container_layout.addWidget(self.create_horizontal_trace(), 2, 1)
+        
+        """Plot axes"""
+        #self.create_spectrum_axes(plot_container_layout)
+        
+        # Add plot grid container to main
+        plot_container.setLayout(plot_container_layout)
+        spectrum_container_layout.addWidget(plot_container)
+        
+        # Add spectrum window region to main window
+        spectrum_container.setLayout(spectrum_container_layout)
+        layout.addWidget(spectrum_container)
+        
+        
+        """
+        Master container
+        """
+        content = QWidget()
+        content.setLayout(layout)
+        self.setCentralWidget(content)
+        
+        
+    def create_phasing_controls(self, dimension_index: int, spectrum: Spectrum) -> QGroupBox:
+        controls = QGroupBox(f"Dimension {dimension_index}")
+        controls_layout = QVBoxLayout()
+        
+        # p0, p1
+        for j in [0, 1]:
+            pj_group = QWidget()
+            pj_group_layout = QHBoxLayout()
+            
+            pj_label = QLabel(f"p{j}")
+            pj_group_layout.addWidget(pj_label)
+            
+            pj_input = QLineEdit("0.0")
+            pj_input.setObjectName(f"dim{dimension_index}_p{j}_input")
+            pj_input.setEnabled(False)
+            double_validator = QDoubleValidator()
+            pj_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            pj_input.setValidator(double_validator)
+            pj_input.setMaximumWidth(50)
+            pj_group_layout.addWidget(pj_input)
+            pj_input.textChanged.connect(
+                partial(
+                    self.threaded, self.phasing_input_callback, spectrum, f"dim{dimension_index}_p{j}"
+                )
+            )
+        
+            pj_slider = QSlider(Qt.Orientation.Horizontal)
+            pj_slider.setObjectName(f"dim{dimension_index}_p{j}_slider")
+            pj_slider.setEnabled(False)
+            pj_slider.setMinimum(-360)
+            pj_slider.setMaximum(360)
+            pj_slider.setValue(0)
+            pj_slider.valueChanged.connect(
+                partial(
+                    self.threaded, self.phasing_slider_callback, spectrum, f"dim{dimension_index}_p{j}"
+                )
+            )
+            pj_group_layout.addWidget(pj_slider)
+            
+            pj_group.setLayout(pj_group_layout)
+            controls_layout.addWidget(pj_group)
+
+        controls.setLayout(controls_layout)
+        return controls
+    
+    
+    def create_import_buttons(self, spectrum: Spectrum) -> QHBoxLayout:
         import_spectrum_buttons_layout = QHBoxLayout()
         # Import spectrum button
         import_spectrum_button = QPushButton(text="Import spectrum")
@@ -143,27 +207,10 @@ class MainWindow(QMainWindow):
         import_demo_spectrum_button = QPushButton(text="Import demo spectrum")
         import_demo_spectrum_button.clicked.connect(lambda: self.import_demo_spectrum_button_callback(spectrum))
         import_spectrum_buttons_layout.addWidget(import_demo_spectrum_button)
-        
-        spectrum_container_layout.addLayout(import_spectrum_buttons_layout)
-        
-        # Spectrum grid layout
-        plot_container = QWidget()
-        plot_container_layout = QGridLayout()
-        plot_container_layout.setHorizontalSpacing(0)
-        plot_container_layout.setVerticalSpacing(0)
-        #plot_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        
-        # Main spectrum display
-        spectrum_obj = SpectrumDisplay(self)
-        spectrum_obj.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        spectrum_obj.setObjectName("spectrum_obj")
-        spectrum_obj.setStyleSheet("border-style: solid; border-width: 1px; border-color:white")
-        spectrum_obj.setPixmap(self.initialize_empty_spectrum())
-        plot_container_layout.addWidget(spectrum_obj, 1, 1)
-        
-        """
-        1D TRACE
-        """
+        return import_spectrum_buttons_layout
+    
+    
+    def create_horizontal_trace(self) -> pg.GraphicsLayoutWidget:
         plot_graph_glw = pg.GraphicsLayoutWidget()
         plot_graph_glw.setObjectName("horizontal_trace")
         plot_graph_glw.setVisible(False)
@@ -183,9 +230,10 @@ class MainWindow(QMainWindow):
         plot_graph.hideAxis("left")
         plot_graph.hideAxis("bottom")
         self.h_trace_line = plot_graph.plot()
-        plot_container_layout.addWidget(plot_graph_glw, 1, 1)
-        
-        # Spectrum axes
+        return plot_graph_glw
+
+
+    def create_spectrum_axes(self, parent_layout) -> None:
         ax_h_height = 50
         ax_v_width = 100
         axs = [
@@ -229,23 +277,9 @@ class MainWindow(QMainWindow):
                 ax_layout.addWidget(ax_label)
             
             ax.setLayout(ax_layout)
-            plot_container_layout.addWidget(ax, *grid_pos)
-        
-        plot_container.setLayout(plot_container_layout)
-        spectrum_container_layout.addWidget(plot_container)
-        
-        
-        
-        spectrum_container.setLayout(spectrum_container_layout)
-        layout.addWidget(spectrum_container)
-        
-        
-        # Master container
-        content = QWidget()
-        content.setLayout(layout)
-        self.setCentralWidget(content)
-
-
+            parent_layout.addWidget(ax, *grid_pos)
+    
+    
     def initialize_empty_spectrum(self) -> QPixmap:
         """Generate a 1x1 empty pixmap so the spectrum can be
         initialized with it.
@@ -272,8 +306,11 @@ class MainWindow(QMainWindow):
         # Hand file off to spectrum class to load data and process.
         spectrum.load(file_path)
         
-        # Enable spectrum axis.
-        self.show_axis(spectrum)
+        
+        self.setWindowTitle(f"NMR Fido - {os.path.basename(file_path)}")
+        
+        
+        self.plot_ax.setLabels(bottom=f'{spectrum.dic["FDF2LABEL"]} [ppm]', right=f'{spectrum.dic["FDF1LABEL"]} [ppm]')
         
         # Display processsed spectrum.
         self.display_spectrum(spectrum)
@@ -314,9 +351,11 @@ class MainWindow(QMainWindow):
         print(f"MainWindow.display_spectrum -> Dim0 Y {spectrum.dim0_ppm_scale[0]=} {spectrum.dim0_ppm_scale[-1]=}")
         x_index_start = np.where(spectrum.dim1_ppm_scale == min(spectrum.dim1_ppm_scale, key=lambda x:abs(x-limitsX[0])))[0][0]
         x_index_end = np.where(spectrum.dim1_ppm_scale == min(spectrum.dim1_ppm_scale, key=lambda x:abs(x-limitsX[1])))[0][0]
+
         
         y_index_start = np.where(spectrum.dim0_ppm_scale == min(spectrum.dim0_ppm_scale, key=lambda x:abs(x-limitsY[0])))[0][0]
         y_index_end = np.where(spectrum.dim0_ppm_scale == min(spectrum.dim0_ppm_scale, key=lambda x:abs(x-limitsY[1])))[0][0]
+
         
         data = deepcopy(spectrum.data)
 
@@ -328,12 +367,13 @@ class MainWindow(QMainWindow):
         
         data = data[180:350, 1900:2160]
         
-        data = np.flip(data, 0)
+        #data = np.flip(data, 0)
         
-        h_trace_line = self.h_trace_line
-        y = data[15]
-        x = np.arange(0, len(y))
-        h_trace_line.setData(x, y)
+        if hasattr(self, "h_trace_line"):
+            h_trace_line = self.h_trace_line
+            y = data[15]
+            x = np.arange(0, len(y))
+            h_trace_line.setData(x, y)
         
         print(f"MainWindow.display_spectrum -> {data.shape=}")
         
@@ -354,73 +394,55 @@ class MainWindow(QMainWindow):
         min_value = max_value*-1
         print(f"MainWindow.display_spectrum -> {min_value=} {max_value=}")
         
-        draw_heatmap = False
-        if draw_heatmap:
-            normalized_array = (data - min_value) / (max_value - min_value)
-            normalized_array = np.clip(normalized_array, 0, 1)  # Ensure values stay within [0, 1]
-            
-            colors = [
-                (0, 'pink'),
-                (0.5, 'black'),
-                (1, 'lightskyblue')
-            ]  # Red for positive values
-            cmap = plt.get_cmap("coolwarm")
-            cmap = LinearSegmentedColormap.from_list("black_to_blue_red", colors, N=256)
-            rgba_array = cmap(normalized_array)
-            rgb_array = (rgba_array[:, :, :3] * 255).astype(np.uint8)
-            
-            img = QImage(rgb_array.data, rgb_array.shape[1], rgb_array.shape[0], QImage.Format.Format_RGB888)
-            
-            pixmap = QPixmap.fromImage(img)
-            
-        else:
-            cont_gen = contour_generator(z=data)
-            base_level = median_abs_value*3
-            nr_levels = 32
-            multiplier = 1.2
-            levels = [base_level*np.power(multiplier, np.abs(x))*np.sign(x) for x in np.arange(-nr_levels, nr_levels)]
-            #levels = [max_value]
-            contours = cont_gen.multi_lines(levels)
-            #print(f"MainWindow.display_spectrum -> {levels=}")
-            
-            scale = 32
-            pixmap = QPixmap(data.shape[1]*scale, data.shape[0]*scale)
-            background_color = QColor("#F0F0F0")
-            background_color.setAlpha(1)
-            pixmap.fill(background_color)
-            
-            painter = QPainter(pixmap)
-            pen_width = 12
 
-            for contour, level in zip(contours, levels):
-                if level == 0.0:
-                    continue
-                
-                if level > 0:
-                    pen = QPen()
-                    pen.setWidth(pen_width)
-                    pen.setColor(QColor("#1f9c74"))
-                    painter.setPen(pen)
-                else:
-                    #pen.setColor(QColor("#fabd2e"))
-                    pen = QPen()
-                    pen.setWidth(pen_width)
-                    #pen.setColor(QColor("#fb481e"))
-                    pen.setColor(QColor("#fabd2e"))
-                    painter.setPen(pen)
-                
-                for contour_line in contour:
-                    for i in range(len(contour_line)-1):
-                        painter.drawLine(
-                            QPointF(contour_line[i][0]*scale, contour_line[i][1]*scale),
-                            QPointF(contour_line[i+1][0]*scale, contour_line[i+1][1]*scale)
-                        )
-            painter.end()
+        data = data.transpose()
+        data = np.flip(data, 1)
+        data = np.flip(data, 0)
+        base_level = median_abs_value*3
+        nr_levels = 32
+        multiplier = 1.2
+        if len(self.plot_levels) == 0 :
+            positive_levels = [base_level*np.power(multiplier, np.abs(x))*np.sign(x) for x in np.arange(1, nr_levels+1)]
+            negative_levels = [x*-1 for x in positive_levels]
+            self.plot_levels = positive_levels + negative_levels
+            self.plot_levels.sort()
         
-        spectrum_object = self.findChild(QLabel, "spectrum_obj")
-        pixmap = pixmap.scaled(spectrum_object.width(), spectrum_object.height())
-        spectrum_object._pixmap = pixmap
-        spectrum_object.setPixmap(pixmap)
+        x_range = (spectrum.dim1_ppm_scale[x_index_start], spectrum.dim1_ppm_scale[x_index_end])
+        y_range = (spectrum.dim0_ppm_scale[y_index_start], spectrum.dim0_ppm_scale[y_index_end])
+        print(f"MainWindow.display_spectrum -> {x_range=} {y_range=}")
+        self.plot_ax.setXRange(*x_range)
+        self.plot_ax.setYRange(*y_range)
+        self.plot_ax.getViewBox().invertY(True)
+        self.plot_ax.getViewBox().invertX(True)
+        
+        move_x = x_range[-1]
+        move_y = y_range[-1]
+        print(move_x, move_y)
+        scale_x = (x_range[0] - x_range[-1]) / data.shape[0]
+        scale_y = (y_range[0] - y_range[-1]) / data.shape[1]
+        print(scale_x, scale_y)
+        
+        if len(self.plot_contours) == 0:
+            for level in self.plot_levels:
+                color = "#1f9c74" if level > 0 else "#fabd2e"
+
+                #print(f"MainWindow.display_spectrum -> {level=}")
+                c = pg.IsocurveItem(
+                    data=data,
+                    level=level,
+                    pen=color
+                )
+                c.setPos(move_x, move_y)
+                c.setTransform(QTransform.fromScale(scale_x, scale_y))
+                #c.setZValue(10)
+                self.plot_contours.append(c)
+                self.plot_ax.addItem(c)
+        else:
+            for contour in self.plot_contours:
+                contour.setData(data)
+        print(f"MainWindow.display_spectrum -> done")
+        self.app.processEvents()
+        
     
     
     def show_axis(self, spectrum: Spectrum) -> None:
@@ -535,7 +557,8 @@ class MainWindow(QMainWindow):
         enable them.
         """
         h_trace = self.findChild(pg.GraphicsLayoutWidget, "horizontal_trace")
-        h_trace.setVisible(True)
+        if h_trace:
+         h_trace.setVisible(True)
         
         
         for i in [0, 1]:

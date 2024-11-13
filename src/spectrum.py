@@ -24,7 +24,7 @@ class Spectrum:
         
         """
         Define processor operations.
-        Using nmrglue + custom phasing -> on avg 0.142 s -> 7 Hz
+        Using nmrglue -> on avg 0.142 s -> 7 Hz
         """
         self.processor = Processor()
         self.processor.add_operation(ng.pipe_proc.sp, off=0.5, end=1.0, pow=2, c=1.0) # adjustable sine bell window
@@ -34,10 +34,9 @@ class Spectrum:
         #self.processor.add_operation(processing.fourier_transform)
         self.processor.add_operation(ng.pipe_proc.ft, auto=True)
         self.processor.add_operation(
-            processing.phase_correction,
+            ng.pipe_proc.ps,
             p0=lambda: self.dim0_p0,
-            p1=lambda: self.dim0_p1,
-            pivot=1461
+            p1=lambda: self.dim0_p1
         )
         self.processor.add_operation(ng.pipe_proc.di) # delete imaginary part
 
@@ -50,7 +49,7 @@ class Spectrum:
         #self.processor.add_operation(processing.fourier_transform)
         self.processor.add_operation(ng.pipe_proc.ft, auto=True)
         self.processor.add_operation(
-            processing.phase_correction,
+            ng.pipe_proc.ps,
             p0=lambda: self.dim1_p0,
             p1=lambda: self.dim1_p1
         )
