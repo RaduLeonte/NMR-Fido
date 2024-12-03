@@ -30,16 +30,11 @@ jobs:
               run: |
                 pip install -r requirements.txt
 
-            - name: Debug
-              run: |
-                pwd
-                ls
-
             - name: Build executable
               uses: Nuitka/Nuitka-Action@main
               with:
                 nuitka-version: main
-                script-name: MMR-Fido.py
+                script-name: NMR-Fido.py
                 mode: app
                 enable-plugins: pyqt6
             
