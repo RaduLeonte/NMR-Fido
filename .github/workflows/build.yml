@@ -33,6 +33,7 @@ jobs:
             - name: Debug
               run: |
                 pwd
+                ls
 
             - name: Build executable
               uses: Nuitka/Nuitka-Action@main
