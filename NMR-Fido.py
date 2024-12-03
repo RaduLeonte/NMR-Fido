@@ -1,6 +1,6 @@
 import sys
 
-from qt_gui.main_window import start_app
+from src.qt_gui.main_window import start_app
 
 
 if __name__ == "__main__":
