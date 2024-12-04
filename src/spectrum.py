@@ -3,7 +3,7 @@ from copy import deepcopy
 from functools import wraps
 from time import time
 
-import processing
+import src.processing
 
 
 class Spectrum:

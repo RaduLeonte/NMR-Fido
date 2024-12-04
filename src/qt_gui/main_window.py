@@ -15,7 +15,7 @@ from PyQt6.QtCore import QSize, Qt, QThreadPool, QRunnable, pyqtSlot, QPointF, Q
 from PyQt6.QtWidgets import *
 from PyQt6.QtGui import QImage, QPixmap, QIcon, qRgb, QDoubleValidator, QColor, QPalette, QPainter, QPen, QResizeEvent, QTransform
 
-from spectrum import Spectrum
+from src.spectrum import Spectrum
 
 
 def start_app(args: list):
