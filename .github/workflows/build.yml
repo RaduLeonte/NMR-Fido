@@ -36,7 +36,7 @@ jobs:
                 nuitka-version: main
                 script-name: NMR-Fido.py
                 mode: app
-                enable-plugins: pyqt6
+                enable-plugins: pyside6
             
             - name: Upload artifacts
               uses: actions/upload-artifact@v4

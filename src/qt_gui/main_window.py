@@ -1,19 +1,25 @@
-'''Initialize main window.'''
-
 import os
 import numpy as np
-import nmrglue as ng
-import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
 from functools import partial
 from copy import deepcopy
+
+from PySide6.QtCore import (
+    Qt,
+    QThreadPool, QRunnable, Slot,
+    QSize, QRectF,
+)
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow,
+    QGridLayout, QGroupBox, QHBoxLayout, QVBoxLayout,
+    QWidget, QLabel,QLineEdit,QSlider, QPushButton, QSizePolicy, QFileDialog,
+)
+from PySide6.QtGui import (
+    QImage, QPixmap, QColor,
+    QPainter, QPen,
+    QTransform,
+    QDoubleValidator,
+)
 import pyqtgraph as pg
-from contourpy import contour_generator
-
-
-from PyQt6.QtCore import QSize, Qt, QThreadPool, QRunnable, pyqtSlot, QPointF, QRectF
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import QImage, QPixmap, QIcon, qRgb, QDoubleValidator, QColor, QPalette, QPainter, QPen, QResizeEvent, QTransform
 
 from src.spectrum import Spectrum
 
@@ -79,7 +85,6 @@ class MainWindow(QMainWindow):
         
         controls_group_layout.addStretch()
         controls_group.setLayout(controls_group_layout)
-        #controls_group.resize(QSize(200, 800))
         layout.addWidget(controls_group)
         
         '''
@@ -97,16 +102,8 @@ class MainWindow(QMainWindow):
         plot_container_layout = QGridLayout()
         plot_container_layout.setHorizontalSpacing(0)
         plot_container_layout.setVerticalSpacing(0)
-        #plot_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         
         """Main plot"""
-        #spectrum_obj = SpectrumDisplay(self)
-        #spectrum_obj.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        #spectrum_obj.setObjectName("spectrum_obj")
-        #spectrum_obj.setStyleSheet("border-style: solid; border-width: 1px; border-color:white")
-        #spectrum_obj.setPixmap(self.initialize_empty_spectrum())
-        #plot_container_layout.addWidget(spectrum_obj, 1, 1)
-        
         self.plot = pg.PlotWidget()
         plot_layout = pg.GraphicsLayout()
         self.plot.setCentralItem(plot_layout)
@@ -119,8 +116,6 @@ class MainWindow(QMainWindow):
         self.plot_ax.getAxis("right").label.setRotation(0)
         self.plot_ax.getAxis("right").label.setTextWidth(60)
         self.plot_ax.getAxis("right").setTextPen("w")
-        #self.plot_ax.getAxis("right").label.adjustSize()
-        #self.plot_ax.getAxis("right").setStyle(tickTextOffset=500)
         self.plot.setBackground(QColor(0, 0, 0, 0))
         plot_layout.addItem(self.plot_ax)
         self.plot_contours = []
@@ -131,7 +126,6 @@ class MainWindow(QMainWindow):
         plot_container_layout.addWidget(self.create_horizontal_trace(), 2, 1)
         
         """Plot axes"""
-        #self.create_spectrum_axes(plot_container_layout)
         
         # Add plot grid container to main
         plot_container.setLayout(plot_container_layout)
@@ -148,6 +142,7 @@ class MainWindow(QMainWindow):
         content = QWidget()
         content.setLayout(layout)
         self.setCentralWidget(content)
+
         
         
     def create_phasing_controls(self, dimension_index: int, spectrum: Spectrum) -> QGroupBox:
@@ -658,21 +653,6 @@ class MainWindow(QMainWindow):
         self.display_spectrum(spectrum)
 
 
-class SpectrumDisplay(QLabel):
-    def __init__(self, *args, **kwargs):
-        QLabel.__init__(self)
-        self._pixmap = MainWindow.initialize_empty_spectrum(self)
-        #print(f"SpectrumDisplay -> {self._pixmap.size()=}")
-        
-    def resizeEvent(self, e: QResizeEvent):
-        #print(f"SpectrumDisplay.resizeEvent -> {self._pixmap.size()=}")
-        self.setPixmap(
-            self._pixmap.scaled(
-                self.width(), self.height()
-            )
-        )
-
-
 class Worker(QRunnable):
     '''
     Worker thread
@@ -694,19 +674,9 @@ class Worker(QRunnable):
         self.args = args
         self.kwargs = kwargs
 
-    @pyqtSlot()
+    @Slot()
     def run(self):
         '''
         Initialise the runner function with passed args, kwargs.
         '''
         self.fn(*self.args, **self.kwargs)
-
-
-class Color(QWidget):
-    def __init__(self, color):
-        super().__init__()
-        self.setAutoFillBackground(True)
-
-        palette = self.palette()
-        palette.setColor(QPalette.ColorRole.Window, QColor(color))
-        self.setPalette(palette)
