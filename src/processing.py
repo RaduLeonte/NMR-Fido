@@ -2,7 +2,7 @@
 
 import numpy as np
 import nmrglue as ng
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 '''
 Window functions

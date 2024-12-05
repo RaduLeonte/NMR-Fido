@@ -3,9 +3,22 @@ import numpy as np
 from functools import partial
 from copy import deepcopy
 
-from PySide6.QtCore import *
-from PySide6.QtWidgets import *
-from PySide6.QtGui import QImage, QPixmap, QIcon, qRgb, QDoubleValidator, QColor, QPalette, QPainter, QPen, QResizeEvent, QTransform
+from PySide6.QtCore import (
+    Qt,
+    QThreadPool, QRunnable, Slot,
+    QSize, QRectF,
+)
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow,
+    QGridLayout, QGroupBox, QHBoxLayout, QVBoxLayout,
+    QWidget, QLabel,QLineEdit,QSlider, QPushButton, QSizePolicy, QFileDialog,
+)
+from PySide6.QtGui import (
+    QImage, QPixmap, QColor,
+    QPainter, QPen,
+    QTransform,
+    QDoubleValidator,
+)
 import pyqtgraph as pg
 
 from src.spectrum import Spectrum
