@@ -10,7 +10,7 @@ jobs:
         
         strategy:
             matrix:
-              os: [macos-13]
+              os: [macos-13, macos-latest]
               #os: [macos-latest, ubuntu-latest, windows-latest]
         
         runs-on: "${{ matrix.os }}"
@@ -23,6 +23,13 @@ jobs:
               uses: actions/setup-python@v5
               with:
                 python-version: '3.11'
+                architecture: |
+                  ${{ 
+                    matrix.os == 'windows-latest' && 'x64'   || 
+                    matrix.os == 'ubuntu-latest'  && 'x64'   || 
+                    matrix.os == 'macos-13'       && 'x64'   || 
+                    matrix.os == 'macos-latest'   && 'arm64' 
+                  }}
                 cache: 'pip'
                 cache-dependency-path: |
                   **/requirements*.txt
@@ -46,7 +53,7 @@ jobs:
                   NMR-Fido-${{ 
                     matrix.os == 'windows-latest' && 'windows'     || 
                     matrix.os == 'ubuntu-latest'  && 'linux'       ||
-                    matrix.os == 'macos-latest'   && 'macos-intel' ||
+                    matrix.os == 'macos-13'       && 'macos-intel' ||
                     matrix.os == 'macos-latest'   && 'macos-m1'
                   }}
                 path: |
