@@ -6,14 +6,16 @@ from copy import deepcopy
 from PySide6.QtCore import (
     Qt,
     QThreadPool, QRunnable, Slot,
-    QSize, QRectF,
+    QSize,
 )
 from PySide6.QtWidgets import (
     QApplication, QMainWindow,
     QGridLayout, QGroupBox, QHBoxLayout, QVBoxLayout,
-    QWidget, QLabel,QLineEdit,QSlider, QPushButton, QSizePolicy, QFileDialog,
+    QToolBar,
+    QWidget, QLabel, QLineEdit, QSlider, QPushButton, QSizePolicy, QFileDialog, QListWidget, QSplitter
 )
 from PySide6.QtGui import (
+    QAction,
     QImage, QPixmap, QColor,
     QPainter, QPen,
     QTransform,
@@ -28,7 +30,7 @@ def start_app(args: list):
     spectrum: Spectrum = Spectrum()
     
     app: QApplication = QApplication(args)
-    app.setStyle("fusion")
+    #app.setStyle("fusion")
 
     window: MainWindow = MainWindow(spectrum, app)
     window.show()
@@ -64,6 +66,73 @@ class MainWindow(QMainWindow):
         
         """Thread pool"""
         self.threadpool = QThreadPool()
+        
+        
+        """
+        Menu
+        """
+        #region Menu
+        menu = self.menuBar()
+        
+        # File menu
+        file_menu = menu.addMenu("File")
+        
+        new_project_action = QAction("New project", self)
+        new_project_action.setEnabled(False)
+        file_menu.addAction(new_project_action)
+        
+        open_project_action = QAction("Open project", self)
+        open_project_action.setEnabled(False)
+        file_menu.addAction(open_project_action)
+        
+        ## Open recent project submenu
+        recent_projects = []
+        recent_projects_submenu = file_menu.addMenu("Open recent project")
+        
+        if len(recent_projects) == 0:
+            no_recent_projects_action = QAction("< no recent projects >", self)
+            no_recent_projects_action.setEnabled(False)
+            recent_projects_submenu.addAction(no_recent_projects_action)
+        else:
+            for recent_project in recent_projects:
+                recent_projects_submenu.addAction(
+                    QAction(recent_project, self)
+                )
+
+        recent_projects_submenu.addSeparator()
+        
+        clear_recent_projects = QAction("Clear recent projects", self)
+        clear_recent_projects.setEnabled(False)
+        recent_projects_submenu.addAction(clear_recent_projects)
+        
+        file_menu.addSeparator()
+
+        
+        import_file_action = QAction("Import file", self)
+        import_file_action.triggered.connect(lambda: self.import_spectrum_button_callback(spectrum))
+        file_menu.addAction(import_file_action)
+        
+        ## Import recent files submenu
+        recent_files = []
+        recent_files_submenu = file_menu.addMenu("Open recent files")
+        
+        if len(recent_files) == 0:
+            no_recent_files_action = QAction("< no recent files >", self)
+            no_recent_files_action.setEnabled(False)
+            recent_files_submenu.addAction(no_recent_files_action)
+        else:
+            for recent_file in recent_files:
+                recent_files_submenu.addAction(
+                    QAction(recent_file, self)
+                )
+
+        recent_files_submenu.addSeparator()
+        
+        clear_recent_files = QAction("Clear recent files", self)
+        clear_recent_files.setEnabled(False)
+        recent_files_submenu.addAction(clear_recent_files)
+        
+        #endregion
 
 
         """
@@ -71,12 +140,32 @@ class MainWindow(QMainWindow):
         """
         layout = QHBoxLayout()
         
+        splitter = QSplitter(Qt.Horizontal)
+        
         '''
-        Window Region: Phasing controls
+        Window Region: Spectra list
         '''
-        controls_group = QGroupBox("Phasing controls")
-        controls_group.setFixedWidth(400)
-        controls_group.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Expanding)
+        #region Spectra list
+        spectra_list_container = QGroupBox("Spectra List")
+        spectra_list_container.setMinimumWidth(200)
+        spectra_list_container_layout = QVBoxLayout()
+        spectra_list_container_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+
+        spectra_list = self.create_spectra_list()
+        spectra_list_container_layout.addWidget(spectra_list)
+        
+        spectra_list_container_layout.addStretch()
+        spectra_list_container.setLayout(spectra_list_container_layout)
+        #endregion
+        
+        '''
+        Window Region: Processing controls
+        '''
+        #region Processing controls
+        controls_group = QGroupBox("Processing")
+        controls_group.setMinimumWidth(300)
+        #controls_group.setFixedWidth(400)
+        #controls_group.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Expanding)
         controls_group_layout = QVBoxLayout()
         controls_group_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
@@ -85,17 +174,17 @@ class MainWindow(QMainWindow):
         
         controls_group_layout.addStretch()
         controls_group.setLayout(controls_group_layout)
-        layout.addWidget(controls_group)
+        #endregion
         
         '''
-        Window Region: Spectrum
+        Window Region: Spectrum display
         '''
-        spectrum_container = QGroupBox("Spectrum")
+        #region Spectrum display
+        spectrum_container = QGroupBox("Display")
+        spectrum_container.setMinimumWidth(500)
         spectrum_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         spectrum_container_layout = QVBoxLayout()
         
-        """Import buttons"""
-        spectrum_container_layout.addLayout(self.create_import_buttons(spectrum))
         
         """Plot grid"""
         plot_container = QWidget()
@@ -110,12 +199,13 @@ class MainWindow(QMainWindow):
         self.plot_ax = pg.PlotItem()
         self.plot_ax.showAxis("right")
         self.plot_ax.hideAxis("left")
-        self.plot_ax.getAxis("bottom").setLabel("Dim 0 [ppm]", color="#FFFFFF")
-        self.plot_ax.getAxis("bottom").setTextPen("w")
-        self.plot_ax.getAxis("right").setLabel("Dim 1\n[ppm]", color="#FFFFFF")
+        self.plot_ax.getAxis("bottom").setLabel("Dim 0 [ppm]")
+        self.plot_ax.getAxis("bottom").setTextPen("black")
+        self.plot_ax.getAxis("right").setLabel("Dim 1\n[ppm]")
         self.plot_ax.getAxis("right").label.setRotation(0)
         self.plot_ax.getAxis("right").label.setTextWidth(60)
-        self.plot_ax.getAxis("right").setTextPen("w")
+        self.plot_ax.getAxis("right").setTextPen("black")
+        self.plot_ax.getViewBox().setBackgroundColor("w")
         self.plot.setBackground(QColor(0, 0, 0, 0))
         plot_layout.addItem(self.plot_ax)
         self.plot_contours = []
@@ -123,7 +213,7 @@ class MainWindow(QMainWindow):
         plot_container_layout.addWidget(self.plot, 1, 1)
         
         """Horizontal trace"""
-        plot_container_layout.addWidget(self.create_horizontal_trace(), 2, 1)
+        #plot_container_layout.addWidget(self.create_horizontal_trace(), 2, 1)
         
         """Plot axes"""
         
@@ -133,16 +223,33 @@ class MainWindow(QMainWindow):
         
         # Add spectrum window region to main window
         spectrum_container.setLayout(spectrum_container_layout)
-        layout.addWidget(spectrum_container)
+        #endregion
         
         
         """
-        Master container
+        Splitter
         """
+        splitter.addWidget(spectra_list_container)
+        splitter.addWidget(controls_group)
+        splitter.addWidget(spectrum_container)
+        splitter.setSizes(
+            [
+                0.2*app_size.width(),
+                0.2*app_size.width(),
+                0.6*app_size.width()
+            ]
+        )
+        layout.addWidget(splitter)
+        
         content = QWidget()
         content.setLayout(layout)
         self.setCentralWidget(content)
 
+
+    def create_spectra_list(self) -> QListWidget:
+        spectra_list = QListWidget()
+        
+        return spectra_list
         
         
     def create_phasing_controls(self, dimension_index: int, spectrum: Spectrum) -> QGroupBox:
@@ -191,20 +298,6 @@ class MainWindow(QMainWindow):
         return controls
     
     
-    def create_import_buttons(self, spectrum: Spectrum) -> QHBoxLayout:
-        import_spectrum_buttons_layout = QHBoxLayout()
-        # Import spectrum button
-        import_spectrum_button = QPushButton(text="Import spectrum")
-        import_spectrum_button.clicked.connect(lambda: self.import_spectrum_button_callback(spectrum))
-        import_spectrum_buttons_layout.addWidget(import_spectrum_button)
-        
-        # Import demo spectrum button
-        import_demo_spectrum_button = QPushButton(text="Import demo spectrum")
-        import_demo_spectrum_button.clicked.connect(lambda: self.import_demo_spectrum_button_callback(spectrum))
-        import_spectrum_buttons_layout.addWidget(import_demo_spectrum_button)
-        return import_spectrum_buttons_layout
-    
-    
     def create_horizontal_trace(self) -> pg.GraphicsLayoutWidget:
         plot_graph_glw = pg.GraphicsLayoutWidget()
         plot_graph_glw.setObjectName("horizontal_trace")
@@ -225,68 +318,8 @@ class MainWindow(QMainWindow):
         plot_graph.hideAxis("left")
         plot_graph.hideAxis("bottom")
         self.h_trace_line = plot_graph.plot()
+        self.h_trace_line.setPen("black")
         return plot_graph_glw
-
-
-    def create_spectrum_axes(self, parent_layout) -> None:
-        ax_h_height = 50
-        ax_v_width = 100
-        axs = [
-            {"orientation": "h", "grid_pos": (0,1), "label_first": True},
-            {"orientation": "v", "grid_pos": (1,0), "label_first": True},
-            {"orientation": "v", "grid_pos": (1,2), "label_first": False},
-            {"orientation": "h", "grid_pos": (2,1), "label_first": False}
-        ]
-        for ax_dict in axs:
-            grid_pos = ax_dict["grid_pos"]
-            orientation = ax_dict["orientation"]
-            ax_label_name = "F2 [ppm]" if orientation == "h" else "F1 [ppm]"
-            label_first = ax_dict["label_first"]
-            
-        
-            # Axis container
-            ax = QWidget()
-            ax.setObjectName("spectrum_ax")
-            ax.setVisible(False)
-            if orientation == "h":
-                ax.setFixedHeight(ax_h_height)
-            else:
-                ax.setFixedWidth(ax_v_width)
-            #h_axis_bottom.setStyleSheet("border-style: solid; border-width: 2px; border-color:black")
-            ax_layout = QVBoxLayout() if orientation == "h" else QHBoxLayout()
-            ax_layout.setContentsMargins(0,0,0,0)
-            ax_layout.setSpacing(0)
-            
-            # Ticks container
-            ax_ticks = QLabel()
-            ax_ticks.setObjectName("spectrum_ticks")
-            
-            # Axis label
-            ax_label = QLabel(ax_label_name, alignment=Qt.AlignmentFlag.AlignCenter)
-            
-            if label_first:
-                ax_layout.addWidget(ax_label)
-                ax_layout.addWidget(ax_ticks)
-            else:
-                ax_layout.addWidget(ax_ticks)
-                ax_layout.addWidget(ax_label)
-            
-            ax.setLayout(ax_layout)
-            parent_layout.addWidget(ax, *grid_pos)
-    
-    
-    def initialize_empty_spectrum(self) -> QPixmap:
-        """Generate a 1x1 empty pixmap so the spectrum can be
-        initialized with it.
-
-        Returns:
-            QPixmap: Empty pixmap.
-        """
-        img = QImage(0, 0, QImage.Format.Format_Indexed8)
-        background_color = QColor("#F0F0F0")
-        background_color.setAlpha(0)
-        img.fill(background_color)
-        return QPixmap.fromImage(img)
     
     
     def import_spectrum(self, spectrum: Spectrum, file_path: str) -> None:
@@ -327,15 +360,6 @@ class MainWindow(QMainWindow):
             'c:\\',
         )       
         self.import_spectrum(spectrum, files[0])
-    
-    
-    def import_demo_spectrum_button_callback(self, spectrum: Spectrum) -> None:
-        """Import demo spectrum from nmrglue wiki.
-
-        Args:
-            spectrum (Spectrum): Main spectrum class.
-        """
-        self.import_spectrum(spectrum, "src/test.fid")
 
 
     def display_spectrum(self, spectrum: Spectrum) -> None:    
@@ -437,114 +461,6 @@ class MainWindow(QMainWindow):
                 contour.setData(data)
         print(f"MainWindow.display_spectrum -> done")
         self.app.processEvents()
-        
-    
-    
-    def show_axis(self, spectrum: Spectrum) -> None:
-        axs = self.findChildren(QWidget, "spectrum_ax")
-        axis_config = {
-            "top": False,
-            "left": False,
-            "right": True,
-            "bottom": True
-        }
-        for ax in axs:
-            
-            ax_ticks = ax.findChild(QLabel, "spectrum_ticks")
-            ax_children = [c.objectName() for c in ax.children() if isinstance(c, QLabel)]
-            ax_label_first = True if ax_children.index("spectrum_ticks") == 1 else False
-            ax_orientation = "h" if ax_ticks.width() > ax_ticks.height() else "v"
-            
-            ax_position = ""
-            if ax_orientation == "h" and ax_label_first:
-                ax_position = "top"
-            elif ax_orientation == "v" and ax_label_first:
-                ax_position = "left"
-            elif ax_orientation == "v" and not ax_label_first:
-                ax_position = "right"
-            elif ax_orientation == "h" and not ax_label_first:
-                ax_position = "bottom"
-                
-            if axis_config[ax_position] != True:
-                continue
-            
-            ax.setVisible(True)
-            ax_ticks_w = ax_ticks.width()
-            ax_ticks_h = ax_ticks.height()
-            ax_orientation = "h" if ax_ticks.width() > ax_ticks.height() else "v"
-            
-            ax_label_name = f'{spectrum.dic["FDF2LABEL"]} [ppm]' if ax_orientation == "h" else f'{spectrum.dic["FDF1LABEL"]}\n[ppm]'
-            ax_label = ax.findChild(QLabel, "")
-            ax_label.setText(ax_label_name)
-            
-            
-
-            pixmap = QPixmap(ax_ticks_w, ax_ticks_h)
-            background_color = QColor("#F0F0F0")
-            background_color.setAlpha(1)
-            pixmap.fill(background_color)
-            
-            painter = QPainter(pixmap)
-            pen = QPen()
-            pen.setColor(QColor("#F0F0F0"))
-            pen.setWidth(2)
-            painter.setPen(pen)
-            
-            
-            ax_ppm_scale = spectrum.dim1_ppm_scale if ax_orientation == "h" else spectrum.dim0_ppm_scale
-            
-            def generate_ticks(ppm_scale: np.array, axis_size: float, nr_ticks:int=6) -> list:
-                ticks_ppm = np.linspace(np.floor(ppm_scale[0]), np.ceil(ppm_scale[-1]), nr_ticks)
-                ticks_unitless = np.absolute((ticks_ppm - ppm_scale[0]) / (ppm_scale[0] - ppm_scale[-1]))
-                ticks_px = list(ticks_unitless * axis_size)
-                ticks_px = [int(p) for p in ticks_px]
-                return ticks_ppm, ticks_px
-                
-            ticks_labels, ticks_positions = generate_ticks(ax_ppm_scale, max(ax_ticks_w, ax_ticks_h), 10)
-            
-            tick_length = 5   # length of each tick
-            text_width = 40
-            text_pos = 10
-            text_height = 10
-
-            # Loop to draw ticks vertically
-            for i in range(len(ticks_positions)):
-                p = ticks_positions[i]
-                label = ticks_labels[i]
-                if ax_orientation == "h":
-                    if p - text_width < 0 or p + text_width > ax_ticks_w:
-                        continue
-                    
-                    if ax_label_first:
-                        ticks_start_pos = (p, ax_ticks_h)
-                        ticks_end_pos = (p, ax_ticks_h-tick_length)
-                        text_rectF = QRectF(p-text_width/2, ax_ticks_h-text_pos-text_height, text_width, text_height)
-                    else:
-                        ticks_start_pos = (p, 0)
-                        ticks_end_pos = (p, tick_length)
-                        text_rectF = QRectF(p-text_width/2, text_pos, text_width, text_height)
-                else:
-                    if p - text_height < 0 or p + text_height > ax_ticks_h:
-                        continue
-                    
-                    if ax_label_first:
-                        ticks_start_pos = (ax_ticks_w, p)
-                        ticks_end_pos = (ax_ticks_w-tick_length, p)
-                        text_rectF = QRectF(ax_ticks_w-text_pos-text_width, p-text_height/2, text_width, text_height)
-                    else:
-                        ticks_start_pos = (0, p)
-                        ticks_end_pos = (tick_length, p)
-                        text_rectF = QRectF(text_pos, p-text_height/2, text_width, text_height)
-                    
-                painter.drawLine(*ticks_start_pos, *ticks_end_pos)
-                painter.drawText(
-                    text_rectF,
-                    Qt.AlignmentFlag.AlignCenter,
-                    str(np.around(label, 2))
-                )
-            
-            painter.end()
-            ax_ticks.setPixmap(pixmap)
     
     
     def toggle_phasing_controls(self) -> None:
