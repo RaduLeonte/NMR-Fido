@@ -1,6 +1,6 @@
 name: Build
 
-on: [push, pull_request]
+on: [push]
 
 jobs:
     build:
@@ -10,7 +10,8 @@ jobs:
         
         strategy:
             matrix:
-                os: [macos-latest, ubuntu-latest, windows-latest]
+              os: [macos-13]
+              #os: [macos-latest, ubuntu-latest, windows-latest]
         
         runs-on: "${{ matrix.os }}"
         
@@ -43,9 +44,10 @@ jobs:
               with:
                 name: |
                   NMR-Fido-${{ 
-                    matrix.os == 'windows-latest' && 'windows' || 
-                    matrix.os == 'ubuntu-latest'  && 'linux'   ||
-                    matrix.os == 'macos-latest'   && 'macos'
+                    matrix.os == 'windows-latest' && 'windows'     || 
+                    matrix.os == 'ubuntu-latest'  && 'linux'       ||
+                    matrix.os == 'macos-latest'   && 'macos-intel' ||
+                    matrix.os == 'macos-latest'   && 'macos-m1'
                   }}
                 path: |
                   build/*.exe
