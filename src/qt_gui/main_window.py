@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import (
     QAction,
+    QDragEnterEvent, QDropEvent,
     QImage, QPixmap, QColor,
     QPainter, QPen,
     QTransform,
@@ -42,6 +43,7 @@ class MainWindow(QMainWindow):
     def __init__(self, spectrum: Spectrum, app: QApplication) -> None:
         super().__init__()
         
+        self.spectrum = spectrum
         self.app = app
         
         """
@@ -63,6 +65,8 @@ class MainWindow(QMainWindow):
             app_height = int(screen_size.height()*(2/3))
             app_size = QSize(int(app_height*(min_size[0]/min_size[1])), app_height)
         self.resize(app_size)
+        
+        self.setAcceptDrops(True)
         
         """Thread pool"""
         self.threadpool = QThreadPool()
@@ -244,6 +248,23 @@ class MainWindow(QMainWindow):
         content = QWidget()
         content.setLayout(layout)
         self.setCentralWidget(content)
+        
+        
+    def dragEnterEvent(self, e: QDragEnterEvent) -> None:
+        if e.mimeData().hasUrls():
+            e.accept()
+        else:
+            e.ignore()
+            
+    
+    def dropEvent(self, e: QDropEvent) -> None:
+        files = e.mimeData().urls()
+        file_paths = [f.toLocalFile() for f in files]
+        accepted_extensions = [".fid", ".ft2"]
+        valid_files = [file for file in file_paths if any(file.lower().endswith(ext) for ext in accepted_extensions)]
+        
+        for f in valid_files:
+            self.import_spectrum(self.spectrum, f)
 
 
     def create_spectra_list(self) -> QListWidget:
