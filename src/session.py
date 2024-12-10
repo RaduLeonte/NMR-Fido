@@ -37,6 +37,10 @@ class Session:
         return self.spectra[index]
     
     
+    def get_spectra_count(self) -> int:
+        return len(self.spectra)
+    
+    
     def get_spectra_base_paths(self) -> list[str]:
         return [s.base_path for s in self.spectra]
     

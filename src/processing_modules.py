@@ -31,7 +31,7 @@ class ProcessingModules:
                         operation_function_args = {}
                         # Get default arg values from function signature
                         operation_function_signature = inspect.signature(operation_function)
-                        print(operation_function_signature)
+                        #print(operation_function_signature)
                         for arg in operation_function_signature.parameters:
                             arg_anno = str(operation_function_signature.parameters[str(arg)])
                             #print(arg, arg_anno)
@@ -47,7 +47,7 @@ class ProcessingModules:
                         # Get name, arg type, and arg description from docstring
                         operation_function_docstring = operation_function.__doc__
                         function_name = operation_function_docstring.splitlines()[0].strip()
-                        print(function_name)
+                        #print(function_name)
                         match = re.search(r"Args:\s*\n([\S|\s]*)\n\n", operation_function_docstring)
                         args_docstring_lines = [l.strip() for l in match.group(1).splitlines()]
                         for l in args_docstring_lines:
@@ -56,7 +56,7 @@ class ProcessingModules:
                             operation_function_args[arg_name]["type"] = match.group(2)
                             operation_function_args[arg_name]["description"] = match.group(3)
                         
-                        print(operation_function_args)
+                        #print(operation_function_args)
                         if operation_function:
                             self.modules[module_name] = {
                                 "function_name": function_name,

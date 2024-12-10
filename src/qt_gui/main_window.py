@@ -100,21 +100,25 @@ class MainWindow(QMainWindow):
         #region Menu
         menu = self.menuBar()
         
-        # File menu
+        """File"""
+        #region Menu: File
         file_menu = menu.addMenu("File")
         
+        """File -> New project"""
         new_project_action = QAction("New project", self)
         new_project_action.setEnabled(False)
         file_menu.addAction(new_project_action)
         
+        """File -> Open project"""
         open_project_action = QAction("Open project", self)
         open_project_action.setEnabled(False)
         file_menu.addAction(open_project_action)
         
-        ## Open recent project submenu
+        """File -> Open recent project >"""
         recent_projects = []
         recent_projects_submenu = file_menu.addMenu("Open recent project")
         
+        """File -> Open recent project -> [Recent projects]"""
         if len(recent_projects) == 0:
             no_recent_projects_action = QAction("< no recent projects >", self)
             no_recent_projects_action.setEnabled(False)
@@ -127,21 +131,23 @@ class MainWindow(QMainWindow):
 
         recent_projects_submenu.addSeparator()
         
+        """File -> Open recent project -> Clear recent projects"""
         clear_recent_projects = QAction("Clear recent projects", self)
         clear_recent_projects.setEnabled(False)
         recent_projects_submenu.addAction(clear_recent_projects)
         
         file_menu.addSeparator()
 
-        
+        """File -> Import file"""
         import_file_action = QAction("Import file", self)
         import_file_action.triggered.connect(lambda: self.import_spectrum_button_callback())
         file_menu.addAction(import_file_action)
         
-        ## Import recent files submenu
+        """File -> Import recent file >"""
         recent_files = []
-        recent_files_submenu = file_menu.addMenu("Open recent files")
+        recent_files_submenu = file_menu.addMenu("Open recent file")
         
+        """File -> Import recent file -> [Recent files]"""
         if len(recent_files) == 0:
             no_recent_files_action = QAction("< no recent files >", self)
             no_recent_files_action.setEnabled(False)
@@ -154,9 +160,21 @@ class MainWindow(QMainWindow):
 
         recent_files_submenu.addSeparator()
         
+        """File -> Import recent file -> Clear recent files"""
         clear_recent_files = QAction("Clear recent files", self)
         clear_recent_files.setEnabled(False)
         recent_files_submenu.addAction(clear_recent_files)
+        #endregion
+        
+        """Processing"""
+        #region Menu: Processing
+        processing_menu = menu.addMenu("Processing")
+        
+        """Processing -> Add processing module"""
+        add_proc_module_action = QAction("Add processing module", self)
+        add_proc_module_action.triggered.connect(lambda: self.add_processing_module("nmrglue_pipe_proc_ft", auto=True))
+        processing_menu.addAction(add_proc_module_action)
+        #endregion
         
         #endregion
 
@@ -188,7 +206,6 @@ class MainWindow(QMainWindow):
         Window Region: Processing controls
         '''
         #region Processing controls
-        self.processing_controls_groups = []
         
         controls_group_container = QGroupBox("Processing")
         controls_group_container.setMinimumWidth(300)
@@ -411,16 +428,19 @@ class MainWindow(QMainWindow):
         # If there is no currently active spectrum, select the first spectrum
         if self.session.get_active_spectrum_index() is None:
             self.select_spectrum(0)
+        
+        for _ in range(len(files)):
+            self.controls_group_layout.addWidget(QWidget(layout=QVBoxLayout()))
 
         # Temporary hardcoded processing
-        self.add_processing_module("nmrglue_pipe_proc_ft", auto=True)
-        #self.add_processing_module(ng.pipe_proc.di)
-        #self.add_processing_module(ng.pipe_proc.tp)
-        self.add_processing_module("nmrglue_pipe_proc_ft", auto=True)
-        self.add_processing_module("nmrglue_pipe_proc_ft", auto=True)
-        self.add_processing_module("nmrglue_pipe_proc_ft", auto=True)
-        self.add_processing_module("nmrglue_pipe_proc_ft", auto=True)
-        #self.add_processing_module(ng.pipe_proc.tp)
+        #self.add_processing_module("nmrglue_pipe_proc_ft", auto=True)
+        ##self.add_processing_module(ng.pipe_proc.di)
+        ##self.add_processing_module(ng.pipe_proc.tp)
+        #self.add_processing_module("nmrglue_pipe_proc_ft", auto=True)
+        #self.add_processing_module("nmrglue_pipe_proc_ft", auto=True)
+        #self.add_processing_module("nmrglue_pipe_proc_ft", auto=True)
+        #self.add_processing_module("nmrglue_pipe_proc_ft", auto=True)
+        ##self.add_processing_module(ng.pipe_proc.tp)
         
         # Process active spectrum
         self.session.get_active_spectrum().process()
@@ -433,7 +453,11 @@ class MainWindow(QMainWindow):
     def update_spectra_list(self) -> None:
         """Sync spectra list widget with spectra list from Session class.
         """
+        current_row = self.spectra_list.currentRow()
+        for x in range(self.spectra_list.count()):
+            self.spectra_list.takeItem(x)
         self.spectra_list.addItems(self.session.get_spectra_base_paths())
+        self.spectra_list.setCurrentRow(current_row)
         
     
     def select_spectrum(self, index: int) -> None:
@@ -453,16 +477,18 @@ class MainWindow(QMainWindow):
     
     
     def add_processing_module(self, module_name: str, *args, **kwargs) -> None:
+        active_index = self.session.get_active_spectrum_index()
+        parent_widget_layout = self.controls_group_layout.itemAt(active_index).widget().layout()
         # create widgets
         module = self.processing_modules.get_module(module_name)
-        print(f"MainWindow.add_processing_module -> {module_name}, {module}")
+        #print(f"MainWindow.add_processing_module -> {module_name}, {module}")
         
         if module["widget_generator"]:
-            self.processing_controls_groups.append(module["widget_generator"]())
+            parent_widget_layout.addWidget(module["widget_generator"]())
         else:
             # Auto-generate control widget using function args
             module_args = module["args"]
-            print(f"MainWindow.add_processing_module -> {module_args=}")
+            #print(f"MainWindow.add_processing_module -> {module_args=}")
             
             collapsible_content = QWidget()
             collapsible_content.setSizePolicy(
@@ -475,7 +501,7 @@ class MainWindow(QMainWindow):
             collapsible_content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
             for arg in module_args.keys():
                 if arg not in ["dic", "data"]:
-                    print(arg, module_args[arg])
+                    #print(arg, module_args[arg])
                     
                     arg_widget = QWidget()
                     #arg_widget.setSizePolicy(
@@ -495,27 +521,26 @@ class MainWindow(QMainWindow):
             
             collapsible_content.setLayout(collapsible_content_layout)
             collapsible = QCollapsible(module["function_name"], collapsible_content)
-            self.processing_controls_groups.append(collapsible)
-            self.controls_group_layout.addWidget(collapsible)
+            parent_widget_layout.addWidget(collapsible)
         
         # add function to spectrum processor
         self.session.get_active_spectrum().processor.add_operation(module["operation"], *args, **kwargs)
     
     
     def update_processing_controls(self, current_item, previous_item) -> None:
-        #print(f"MainWindow.update_processing_controls -> curr: {current_item.currentRow()}; prev: {previous_item}")
-        # Hide all widgets first
-        for widget_group in self.processing_controls_groups:
-            for widget in widget_group:
+        if not current_item:
+            return
+        
+        current_row = self.spectra_list.currentRow()
+        
+        for i in range(self.controls_group_layout.count()):
+            widget = self.controls_group_layout.itemAt(i).widget()
+            if widget:
                 widget.setVisible(False)
 
-        if current_item and previous_item:
-            current_row = self.spectra_list.currentRow()
-            print(f"MainWindow.update_processing_controls -> {current_row=}")
-            print(f"MainWindow.update_processing_controls -> {self.processing_controls_groups=}")
-            widgets_to_show = self.processing_controls_groups[self.spectra_list.currentRow()]
-            for widget in widgets_to_show:
-                widget.setVisible(True)
+        widget_to_show = self.controls_group_layout.itemAt(current_row).widget()
+        if widget_to_show:
+            widget_to_show.setVisible(True)
 
         
         
