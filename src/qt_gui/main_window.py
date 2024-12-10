@@ -264,6 +264,7 @@ class MainWindow(QMainWindow):
         """
         Splitter
         """
+        #region Splitter
         splitter.addWidget(spectra_list_container)
         splitter.addWidget(controls_group_container)
         splitter.addWidget(spectrum_container)
@@ -276,23 +277,73 @@ class MainWindow(QMainWindow):
         )
         layout.addWidget(splitter)
         
+        """
+        Overlay
+        """
+        #region Overlay
+        self.overlay = QLabel("", self)
+        self.overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.overlay.setStyleSheet("""
+            background-color: rgba(0, 0, 0, 100);
+            font-weight: bold;
+        """)
+        self.overlay.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.overlay.hide()
+        
         content = QWidget()
         content.setLayout(layout)
         self.setCentralWidget(content)
-        
-        
+    
+    
+    #region Main window resize event
+    def resizeEvent(self, e):
+        self.overlay.resize(self.size())
+        super().resizeEvent(e)
+    
+    
+    #region File IO
     def dragEnterEvent(self, e: QDragEnterEvent) -> None:
         if e.mimeData().hasUrls():
-            e.accept()
+            valid_files = [
+                f.toLocalFile() for f in e.mimeData().urls()
+                if any(f.toLocalFile().lower().endswith(ext) for ext in [".fid", ".ft2"])
+            ]
+            if len(valid_files) != 0:
+                e.accept()
+                self.overlay.setStyleSheet("""
+                    background-color: rgba(0, 255, 0, 10);
+                    font-weight: bold;
+                """)
+                file_list_text = ''.join(f + '\n' for f in valid_files)
+                self.overlay.setText(
+                    f"Import files:\n{file_list_text}"
+                )
+            else:
+                e.ignore()
+                self.overlay.setStyleSheet("""
+                    background-color: rgba(255, 0, 0, 10);
+                    font-weight: bold;
+                """)
+                self.overlay.setText(
+                    f"Invalid file format."
+                )
+            self.overlay.raise_()
+            self.overlay.show()
         else:
             e.ignore()
-            
+    
+    
+    def dragLeaveEvent(self, e):
+        self.overlay.hide()
+    
     
     def dropEvent(self, e: QDropEvent) -> None:
-        files = e.mimeData().urls()
-        file_paths = [f.toLocalFile() for f in files]
-        accepted_extensions = [".fid", ".ft2"]
-        valid_files = [file for file in file_paths if any(file.lower().endswith(ext) for ext in accepted_extensions)]
+        self.overlay.hide()
+        
+        valid_files = [
+            f.toLocalFile() for f in e.mimeData().urls()
+            if any(f.toLocalFile().lower().endswith(ext) for ext in [".fid", ".ft2"])
+        ]
         
         self.import_spectra(valid_files)
         
@@ -313,12 +364,16 @@ class MainWindow(QMainWindow):
         
         
     def import_spectra(self, files: list[str]) -> None:
+        # Send list of files to Session class to import
         self.session.import_spectra(files)
         
+        # Update file list widget to be in sync with Session
         self.update_spectra_list()
         
-        self.select_spectrum(0)
-        
+        # If there is no currently active spectrum, select the first spectrum
+        if self.session.get_active_spectrum_index() is None:
+            self.select_spectrum(0)
+
         # temporary hardcoded processing
         self.add_processing_module("nmrglue_pipe_proc_ft", auto=True)
         #self.add_processing_module(ng.pipe_proc.di)
@@ -328,13 +383,16 @@ class MainWindow(QMainWindow):
         self.add_processing_module("nmrglue_pipe_proc_ft", auto=True)
         self.add_processing_module("nmrglue_pipe_proc_ft", auto=True)
         #self.add_processing_module(ng.pipe_proc.tp)
+        
+        # Process active spectrum
         self.session.get_active_spectrum().process()
         
+        # Display active spectrum
         #self.display_spectrum(self.session.get_spectrum(0))
 
 
     def update_spectra_list(self) -> None:
-        self.spectra_list.addItems(self.session.get_spectra_list())
+        self.spectra_list.addItems(self.session.get_spectra_base_paths())
         
     
     def select_spectrum(self, index: int) -> None:

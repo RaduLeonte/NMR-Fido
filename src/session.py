@@ -32,7 +32,7 @@ class Session:
         return self.spectra[index]
     
     
-    def get_spectra_list(self) -> list[str]:
+    def get_spectra_base_paths(self) -> list[str]:
         return [s.base_path for s in self.spectra]
     
     
