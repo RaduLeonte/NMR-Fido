@@ -9,25 +9,21 @@ import re
 from PySide6.QtCore import (
     Qt,
     QThreadPool, QRunnable, Slot,
-    QSize
+    QSize,
 )
 from PySide6.QtWidgets import (
     QApplication, QMainWindow,
-    QLayout, QGridLayout, QGroupBox, QHBoxLayout, QVBoxLayout,
-    QToolBar,
+    QGridLayout, QGroupBox, QHBoxLayout, QVBoxLayout,
     QWidget, QLabel, QLineEdit, QSlider, QPushButton, QSizePolicy,
     QFileDialog, QListWidget, QSplitter, QSpacerItem, QCheckBox,
     QScrollArea,
-    QStyledItemDelegate, QStyleOptionViewItem,
 )
 from PySide6.QtGui import (
     QAction,
-    QDragEnterEvent, QDropEvent,
-    QImage, QPixmap, QColor,
-    QPainter, QPen,
+    QResizeEvent, QDragEnterEvent, QDragLeaveEvent, QDropEvent,
+    QPixmap, QColor,
     QTransform,
     QDoubleValidator,
-    QIcon,
 )
 import pyqtgraph as pg
 
@@ -37,28 +33,46 @@ from src.processing_modules import ProcessingModules
 
 
 def start_app(args: list):
-    
-    app: QApplication = QApplication(args)
+    """Start the application.
 
+    Args:
+        args (list): List of arguments passed through command line.
+    """
+    # Main application
+    app: QApplication = QApplication(args)
+    # Main window
     window: MainWindow = MainWindow(app)
     window.show()
-
+    # Run app
     app.exec()
 
 
 class MainWindow(QMainWindow):
+    """Main window class
+    """
     def __init__(self, app: QApplication) -> None:
+        """Constructor.
+
+        Args:
+            app (QApplication): QApplication context.
+        """
+        # Parent constructor
         super().__init__()
         
+        # Set app
+        self.app = app
+        
+        # Initialize classes
         self.session = Session()
         self.processing_modules = ProcessingModules()
-        self.app = app
         
         """
         Window config
         """
+        #region Window config
         self.setWindowTitle("NMR Fido")
         #self.setWindowIcon(QIcon("icon.png"))
+        self.setAcceptDrops(True)
         
         # Minimum size
         min_size = (820, 400)
@@ -73,8 +87,8 @@ class MainWindow(QMainWindow):
             app_height = int(screen_size.height()*(2/3))
             app_size = QSize(int(app_height*(min_size[0]/min_size[1])), app_height)
         self.resize(app_size)
+        #endregion
         
-        self.setAcceptDrops(True)
         
         """Thread pool"""
         self.threadpool = QThreadPool()
@@ -151,7 +165,6 @@ class MainWindow(QMainWindow):
         Main container
         """
         layout = QHBoxLayout()
-        
         splitter = QSplitter(Qt.Horizontal)
         
         '''
@@ -180,8 +193,6 @@ class MainWindow(QMainWindow):
         controls_group_container = QGroupBox("Processing")
         controls_group_container.setMinimumWidth(300)
         controls_group_container_layout = QVBoxLayout()
-        #controls_group.setFixedWidth(400)
-        #controls_group.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Expanding)
         
         controls_group_scroll = QScrollArea()
         
@@ -189,17 +200,6 @@ class MainWindow(QMainWindow):
         self.controls_group_layout = QVBoxLayout()
         self.controls_group_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        #self.controls_group_layout.addWidget(
-        #    QCollapsible(
-        #        "Test",
-        #        QLabel("child content")
-        #    )
-        #)
-        
-        #for i in [0, 1]:
-        #    controls_group_layout.addWidget(self.create_phasing_controls(i, spectrum))
-        
-        #self.controls_group_layout.addStretch()
         controls_group.setLayout(self.controls_group_layout)
         
         controls_group_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -276,6 +276,7 @@ class MainWindow(QMainWindow):
             ]
         )
         layout.addWidget(splitter)
+        #endregion
         
         """
         Overlay
@@ -289,26 +290,48 @@ class MainWindow(QMainWindow):
         """)
         self.overlay.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.overlay.hide()
+        #endregion
         
-        content = QWidget()
-        content.setLayout(layout)
-        self.setCentralWidget(content)
+        # Set main layout to be layout of central widget
+        self.setCentralWidget(QWidget(layout=layout))
     
     
     #region Main window resize event
-    def resizeEvent(self, e):
+    def resizeEvent(self, e: QResizeEvent) -> None:
+        """Main window resize event handler
+
+        Args:
+            e (QEvent): _description_
+        """
+        # Resize the overlay widget so it always fills the window
         self.overlay.resize(self.size())
+        
+        # Call base class resiz even
         super().resizeEvent(e)
+    #endregion
     
     
     #region File IO
     def dragEnterEvent(self, e: QDragEnterEvent) -> None:
-        if e.mimeData().hasUrls():
+        """Main window drag enter event handler.
+
+        Args:
+            e (QDragEnterEvent): Event passed when mouse enters the window.
+        """
+        
+        # Check if user is dragging files
+        if not e.mimeData().hasUrls():
+            # No files in payload, ignore
+            e.ignore()
+        else:
+            # Payload had files, check if there are files with accepted formats
             valid_files = [
                 f.toLocalFile() for f in e.mimeData().urls()
                 if any(f.toLocalFile().lower().endswith(ext) for ext in [".fid", ".ft2"])
             ]
+            # Check if any valid files were found
             if len(valid_files) != 0:
+                # There are valid files, accept the payload and turn on green overlay
                 e.accept()
                 self.overlay.setStyleSheet("""
                     background-color: rgba(0, 255, 0, 10);
@@ -319,6 +342,7 @@ class MainWindow(QMainWindow):
                     f"Import files:\n{file_list_text}"
                 )
             else:
+                # There were no valid files, ignore payload and turn on red overlay
                 e.ignore()
                 self.overlay.setStyleSheet("""
                     background-color: rgba(255, 0, 0, 10);
@@ -327,43 +351,57 @@ class MainWindow(QMainWindow):
                 self.overlay.setText(
                     f"Invalid file format."
                 )
+            # Make sure overlay is on top
             self.overlay.raise_()
+            # Show overlay
             self.overlay.show()
-        else:
-            e.ignore()
     
     
-    def dragLeaveEvent(self, e):
+    def dragLeaveEvent(self, e: QDragLeaveEvent) -> None:
+        """Main window drag leave event handler.
+
+        Args:
+            e (QDragLeaveEvent): Event passed when mouse leaves the window.
+        """
+        # Hide overlay on mouse leave
         self.overlay.hide()
     
     
     def dropEvent(self, e: QDropEvent) -> None:
+        """Main window drag leave event handler.
+
+        Args:
+            e (QDropEvent): Event passed when dropping files onto the window.
+        """
+        # Hide overlay
         self.overlay.hide()
         
+        # Fish out files with accepted file formats from the payload
         valid_files = [
             f.toLocalFile() for f in e.mimeData().urls()
             if any(f.toLocalFile().lower().endswith(ext) for ext in [".fid", ".ft2"])
         ]
         
+        # Send valid files to be imported
         self.import_spectra(valid_files)
         
         
     def import_spectrum_button_callback(self) -> None:
-        """Open a dialog for file browsing then imporrt
-        specified fid file.
-
-        Args:
-            spectrum (Spectrum):  Main spectrum class.
+        """Open a dialog for file browsing files.
         """
         files = QFileDialog.getOpenFileName(
             self,
             'Open file',
-            'c:\\',
         )       
         self.import_spectra(files)
         
         
     def import_spectra(self, files: list[str]) -> None:
+        """Handles import of files from specified paths.
+
+        Args:
+            files (list[str]): List of file paths to import.
+        """
         # Send list of files to Session class to import
         self.session.import_spectra(files)
         
@@ -374,7 +412,7 @@ class MainWindow(QMainWindow):
         if self.session.get_active_spectrum_index() is None:
             self.select_spectrum(0)
 
-        # temporary hardcoded processing
+        # Temporary hardcoded processing
         self.add_processing_module("nmrglue_pipe_proc_ft", auto=True)
         #self.add_processing_module(ng.pipe_proc.di)
         #self.add_processing_module(ng.pipe_proc.tp)
@@ -388,17 +426,31 @@ class MainWindow(QMainWindow):
         self.session.get_active_spectrum().process()
         
         # Display active spectrum
-        #self.display_spectrum(self.session.get_spectrum(0))
+        #self.display_spectrum(self.session.get_active_spectrum())
+    #endregion
 
 
     def update_spectra_list(self) -> None:
+        """Sync spectra list widget with spectra list from Session class.
+        """
         self.spectra_list.addItems(self.session.get_spectra_base_paths())
         
     
     def select_spectrum(self, index: int) -> None:
+        """Make spectrum specified by index the currently active spectrum
+
+        Args:
+            index (int): Index of spectrum.
+        """
+        # Select appropriate row in the spectra list widget
         self.spectra_list.setCurrentRow(index)
-        self.setWindowTitle(f"NMR Fido - {self.session.get_spectrum(index).base_path}")
-        
+        # Set the currently active spectrum in the session class
+        self.session.set_active_spectrum_index(index)
+        # Set the window title to reflect the currently active spectrum
+        self.setWindowTitle(f"NMR Fido - {self.session.get_active_spectrum().base_path}")
+        # Display the newly active spectrum
+        #self.display_spectrum(self.session.get_active_spectrum())
+    
     
     def add_processing_module(self, module_name: str, *args, **kwargs) -> None:
         # create widgets
@@ -646,8 +698,7 @@ class MainWindow(QMainWindow):
     def threaded(self, *args):
         """Run a function (args[0]) with arguments (args[1:]) on a different thread.
         """
-        worker = Worker(*args)
-        self.threadpool.start(worker)
+        self.threadpool.start(Worker(*args))
     
     
     def phasing_input_callback(self, spectrum: Spectrum, identifier: str, phasing_input_text: str) -> None:
@@ -761,55 +812,81 @@ class Worker(QRunnable):
 
 
 class QCollapsible(QWidget):
+    """Custom collapsible PySide6 widget.
+    """
     def __init__(self, title: str, content: QWidget, expanded: bool = True):
+        """Constructor.
+
+        Args:
+            title (str): Title in the header of the collapsible widget.
+            content (QWidget): Child widget that is collapsed/expanded.
+            expanded (bool, optional): Specify if the widget should be expanded when created.
+        """
+        # Parent class constructor
         super().__init__()
         
+        # Set widget width to be 100% of parent and of variable but minimal height
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Minimum
         )
+        
+        # Create layout
         self.main_layout = QVBoxLayout()
         self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(self.main_layout)
         
+        # Header
         self.expand_button = QPushButton()
         self.expand_button.setMinimumHeight(25)
-        
+        # Header layout
         self.expand_button_layout = QHBoxLayout()
         self.expand_button_layout.setContentsMargins(10, 5, 10, 5)
         self.expand_button_layout.setSpacing(5)
         
+        # Header title
         self.expand_button_layout.addWidget(QLabel(title))
+        # Spacer
         self.expand_button_layout.addSpacerItem(
             QSpacerItem(10, 10, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         )
+        # Header triangle icon
         self.expand_button_icon = QLabel()
         self.expand_button_layout.addWidget(self.expand_button_icon)
 
+        # Click event
         self.expand_button.clicked.connect(self.expand)
+        
+        # Set layout and add button
         self.expand_button.setLayout(self.expand_button_layout)
         self.main_layout.addWidget(self.expand_button)
         
-        
+        # Add child content
         self.content = content
         self.main_layout.addWidget(self.content)
 
-        
-        self.setLayout(self.main_layout)
-        
+        # Create pixmaps and set it to the button icon
         self.expanded = expanded
         self.icon_pixmap_expanded = QPixmap("src/qt_gui/assets/icon_expanded.png").scaled(10, 10, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.icon_pixmap_collapsed = QPixmap("src/qt_gui/assets/icon_collapsed.png").scaled(10, 10, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.expand_button_icon.setPixmap(self.icon_pixmap_expanded if self.expanded else self.icon_pixmap_collapsed)
         
+        # Widget is expanded upon creation, collapse it if it shouldn't be
         if not self.expanded:
             self.expand()
         
         
     def expand(self) -> None:
+        """Expand/collapse widget
+        """
+        # Check current state
         if self.expanded:
+            # If widget is expanded -> collapse it and change the icon
             self.content.setMaximumHeight(0)
             self.expand_button_icon.setPixmap(self.icon_pixmap_collapsed)
         else:
+            # If widget is collapse -> expand it and change the icon
             self.content.setMaximumHeight(999999)
             self.expand_button_icon.setPixmap(self.icon_pixmap_expanded)
+        # Toggle state variable
         self.expanded = not self.expanded

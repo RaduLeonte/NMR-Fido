@@ -1,5 +1,6 @@
 from src.spectrum import Spectrum
 
+
 class Session:
     
     def __init__(self):
@@ -18,10 +19,14 @@ class Session:
         if self.active_spectrum is None:
             self.active_spectrum_index = 0
             self.active_spectrum = self.spectra[0]
-
+    
     
     def get_active_spectrum_index(self) -> int:
         return self.active_spectrum_index
+    
+    
+    def set_active_spectrum_index(self, index: int=0) -> None:
+        self.active_spectrum_index = index
     
     
     def get_active_spectrum(self) -> Spectrum:
