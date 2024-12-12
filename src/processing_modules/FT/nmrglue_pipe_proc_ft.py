@@ -1,10 +1,5 @@
 import nmrglue as ng
 
-#from src.qt_gui.main_window import QCollapsible
-
-#def nmrglue_pipe_proc_ft_widget():
-#    return []
-
 
 def nmrglue_pipe_proc_ft_operation(
         dic, data,
@@ -35,3 +30,7 @@ def nmrglue_pipe_proc_ft_operation(
         dic (dict), data (np.ndarray): Altered spectrum dictionary and data.
     """
     return ng.pipe_proc.ft(dic, data, auto, real, inv, alt, neg, null, bruk, debug)
+
+
+#def nmrglue_pipe_proc_ft_widget():
+#    return []

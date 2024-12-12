@@ -10,7 +10,7 @@ class ProcessingModules:
         print(f"ProcessingModules.__init__ -> Start")
         self.modules = {}
 
-        base_folder = "src/processing"
+        base_folder = "src/processing_modules"
         sys.path.append(os.path.abspath(base_folder))  # Add base folder to sys.path
 
         for root, _, files in os.walk(base_folder):
@@ -59,10 +59,11 @@ class ProcessingModules:
                         #print(operation_function_args)
                         if operation_function:
                             self.modules[module_name] = {
+                                "rel_path": relative_path,
                                 "function_name": function_name,
                                 "operation": operation_function,
                                 "widget_generator": widget_function,
-                                "args": operation_function_args
+                                "args": operation_function_args,
                             }
                             print(f"ProcessingModules.__init__ -> Loaded module: {module_name}")
                     except Exception as e:

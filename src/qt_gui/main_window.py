@@ -5,6 +5,7 @@ from copy import deepcopy
 import nmrglue as ng
 from inspect import Signature
 import re
+from collections import defaultdict
 
 from PySide6.QtCore import (
     Qt,
@@ -16,7 +17,7 @@ from PySide6.QtWidgets import (
     QGridLayout, QGroupBox, QHBoxLayout, QVBoxLayout,
     QWidget, QLabel, QLineEdit, QSlider, QPushButton, QSizePolicy,
     QFileDialog, QListWidget, QSplitter, QSpacerItem, QCheckBox,
-    QScrollArea,
+    QScrollArea, QWidgetAction,
 )
 from PySide6.QtGui import (
     QAction,
@@ -170,10 +171,36 @@ class MainWindow(QMainWindow):
         #region Menu: Processing
         processing_menu = menu.addMenu("Processing")
         
-        """Processing -> Add processing module"""
-        add_proc_module_action = QAction("Add processing module", self)
-        add_proc_module_action.triggered.connect(lambda: self.add_processing_module("nmrglue_pipe_proc_ft", auto=True))
-        processing_menu.addAction(add_proc_module_action)
+        display_spectrum_action = QAction("Display spectrum", self)
+        display_spectrum_action.triggered.connect(lambda: self.display_spectrum())
+        processing_menu.addAction(display_spectrum_action)
+        
+        """Processing -> Add processing module > """
+        add_proc_module_submenu = processing_menu.addMenu("Add processing module")
+        
+        
+        modules = self.processing_modules.modules
+        modules_hierarchy = {k:modules[k]["rel_path"] for k in modules.keys()}
+        sorted_modules = sorted(modules_hierarchy.items(), key=lambda x: len(x[1].split('.')), reverse=True)
+        menu_hierarchy = defaultdict(lambda: None)
+        print(modules_hierarchy)
+        for action_name, path in sorted_modules:
+            path_parts = path.split('.')
+            
+            current_menu = add_proc_module_submenu
+            for part in path_parts:
+                if menu_hierarchy[part] is None:
+                    menu_hierarchy[part] = current_menu.addMenu(part)
+                
+                current_menu = menu_hierarchy[part]
+
+            action = QAction(action_name, self)
+            action.triggered.connect(lambda _, fnc=action_name: self.add_processing_module(fnc))
+            current_menu.addAction(action)  
+        
+        add_default_processing = QAction("Add default processing (2D)", self)
+        add_default_processing.triggered.connect(lambda: self.default_processing())
+        add_proc_module_submenu.addAction(add_default_processing)
         #endregion
         
         #endregion
@@ -215,6 +242,8 @@ class MainWindow(QMainWindow):
         
         controls_group = QWidget()
         self.controls_group_layout = QVBoxLayout()
+        self.controls_group_layout.setContentsMargins(0, 0, 0, 0)
+        self.controls_group_layout.setSpacing(0)
         self.controls_group_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         controls_group.setLayout(self.controls_group_layout)
@@ -475,13 +504,13 @@ class MainWindow(QMainWindow):
         # Display the newly active spectrum
         #self.display_spectrum(self.session.get_active_spectrum())
     
-    
+    #region Processing module
     def add_processing_module(self, module_name: str, *args, **kwargs) -> None:
+        #print(f"MainWindow.add_processing_module -> {module_name=}")
         active_index = self.session.get_active_spectrum_index()
         parent_widget_layout = self.controls_group_layout.itemAt(active_index).widget().layout()
         # create widgets
         module = self.processing_modules.get_module(module_name)
-        #print(f"MainWindow.add_processing_module -> {module_name}, {module}")
         
         if module["widget_generator"]:
             parent_widget_layout.addWidget(module["widget_generator"]())
@@ -520,11 +549,29 @@ class MainWindow(QMainWindow):
                     collapsible_content_layout.addWidget(arg_widget)
             
             collapsible_content.setLayout(collapsible_content_layout)
-            collapsible = QCollapsible(module["function_name"], collapsible_content)
+            collapsible = QCollapsible(module["function_name"], collapsible_content, expanded=False)
             parent_widget_layout.addWidget(collapsible)
         
         # add function to spectrum processor
         self.session.get_active_spectrum().processor.add_operation(module["operation"], *args, **kwargs)
+    
+    
+    def default_processing(self):
+        self.add_processing_module("nmrglue_pipe_proc_sp")
+        self.add_processing_module("nmrglue_pipe_proc_zf", auto=True)
+        self.add_processing_module("nmrglue_pipe_proc_ft")
+        # ps
+        self.add_processing_module("nmrglue_pipe_proc_di")
+        
+        self.add_processing_module("nmrglue_pipe_proc_tp")
+        
+        self.add_processing_module("nmrglue_pipe_proc_sp")
+        self.add_processing_module("nmrglue_pipe_proc_zf", auto=True)
+        self.add_processing_module("nmrglue_pipe_proc_ft")
+        # ps
+        self.add_processing_module("nmrglue_pipe_proc_di")
+        
+        self.add_processing_module("nmrglue_pipe_proc_tp")
     
     
     def update_processing_controls(self, current_item, previous_item) -> None:
@@ -541,7 +588,7 @@ class MainWindow(QMainWindow):
         widget_to_show = self.controls_group_layout.itemAt(current_row).widget()
         if widget_to_show:
             widget_to_show.setVisible(True)
-
+    #endregion
         
         
     def create_phasing_controls(self, dimension_index: int, spectrum: Spectrum) -> QGroupBox:
@@ -614,7 +661,12 @@ class MainWindow(QMainWindow):
         return plot_graph_glw
 
 
-    def display_spectrum(self, spectrum: Spectrum) -> None:
+    def display_spectrum(self, spectrum: Spectrum=None) -> None:
+        if spectrum is None:
+            spectrum = self.session.get_active_spectrum()
+            
+        spectrum.process()
+        print(f"MainWindow.display_spectrum -> {spectrum=}")
         
         self.plot_ax.setLabels(bottom=f'{spectrum.dic["FDF2LABEL"]} [ppm]', right=f'{spectrum.dic["FDF1LABEL"]} [ppm]')
         
@@ -804,7 +856,7 @@ class MainWindow(QMainWindow):
         spectrum.phase([float(p) if p != "" else 0.0 for p in phasing_values])
         
         # Display phased spectrum
-        self.display_spectrum(spectrum)
+        #self.display_spectrum(spectrum)
 
 
 class Worker(QRunnable):
@@ -835,7 +887,7 @@ class Worker(QRunnable):
         '''
         self.fn(*self.args, **self.kwargs)
 
-
+#region QCollapsible
 class QCollapsible(QWidget):
     """Custom collapsible PySide6 widget.
     """
@@ -863,7 +915,7 @@ class QCollapsible(QWidget):
         
         # Header
         self.expand_button = QPushButton()
-        self.expand_button.setMinimumHeight(25)
+        self.expand_button.setMinimumHeight(30)
         # Header layout
         self.expand_button_layout = QHBoxLayout()
         self.expand_button_layout.setContentsMargins(10, 5, 10, 5)
@@ -878,9 +930,6 @@ class QCollapsible(QWidget):
         # Header triangle icon
         self.expand_button_icon = QLabel()
         self.expand_button_layout.addWidget(self.expand_button_icon)
-
-        # Click event
-        self.expand_button.clicked.connect(self.expand)
         
         # Set layout and add button
         self.expand_button.setLayout(self.expand_button_layout)
@@ -889,29 +938,43 @@ class QCollapsible(QWidget):
         # Add child content
         self.content = content
         self.main_layout.addWidget(self.content)
-
-        # Create pixmaps and set it to the button icon
-        self.expanded = expanded
+        
+        self.has_children = True if self.content.layout().count() != 0 else False
+        
         self.icon_pixmap_expanded = QPixmap("src/qt_gui/assets/icon_expanded.png").scaled(10, 10, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.icon_pixmap_collapsed = QPixmap("src/qt_gui/assets/icon_collapsed.png").scaled(10, 10, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.expand_button_icon.setPixmap(self.icon_pixmap_expanded if self.expanded else self.icon_pixmap_collapsed)
         
-        # Widget is expanded upon creation, collapse it if it shouldn't be
-        if not self.expanded:
-            self.expand()
+        self.expanded = expanded
+        if self.has_children:
+            self.expand_button.clicked.connect(self.toggle)
+            
+            # Create pixmaps and set it to the button icon
+            self.expand_button_icon.setPixmap(self.icon_pixmap_expanded if self.expanded else self.icon_pixmap_collapsed)
+            
+            # Widget is expanded upon creation, collapse it if it shouldn't be
+            if not self.expanded:
+                self.collapse()
         
         
-    def expand(self) -> None:
+    def toggle(self) -> None:
         """Expand/collapse widget
         """
         # Check current state
         if self.expanded:
             # If widget is expanded -> collapse it and change the icon
-            self.content.setMaximumHeight(0)
-            self.expand_button_icon.setPixmap(self.icon_pixmap_collapsed)
+            self.collapse()
         else:
             # If widget is collapse -> expand it and change the icon
-            self.content.setMaximumHeight(999999)
-            self.expand_button_icon.setPixmap(self.icon_pixmap_expanded)
+            self.expand()
         # Toggle state variable
         self.expanded = not self.expanded
+        
+    
+    def collapse(self) -> None:
+        self.content.setMaximumHeight(0)
+        self.expand_button_icon.setPixmap(self.icon_pixmap_collapsed)
+        
+    
+    def expand(self) -> None:
+        self.content.setMaximumHeight(999999)
+        self.expand_button_icon.setPixmap(self.icon_pixmap_expanded)
